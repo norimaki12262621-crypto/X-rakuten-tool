@@ -1,89 +1,208 @@
-// api/get-product.js
-// 楽天APIで商品取得 → Geminiが最適商品を選定してXポスト文を生成
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>X × 楽天 自動投稿ツール</title>
+<style>
+  body { font-family: sans-serif; max-width: 640px; margin: 40px auto; padding: 16px; background: #f9f9f9; }
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+  label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; color: #555; }
+  select, input[type=number] { width: 100%; padding: 8px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; background: #fff; }
+  button { background: #000; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; font-size: 15px; cursor: pointer; width: 100%; margin-bottom: 12px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #result { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-top: 16px; display: none; }
+  .product-info { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+  .product-info img { width: 80px; height: 80px; object-fit: contain; border: 1px solid #eee; border-radius: 4px; background: #fff; }
+  .product-info .detail { font-size: 13px; flex: 1; }
+  .product-info .name { font-weight: bold; margin-bottom: 4px; line-height: 1.4; }
+  .product-info .price { color: #BF0000; font-weight: bold; font-size: 15px; }
+  .product-info .shop { color: #888; font-size: 11px; margin-top: 2px; }
+  #post-text { width: 100%; min-height: 120px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 8px; box-sizing: border-box; line-height: 1.6; }
+  #char-count { font-size: 12px; color: #888; text-align: right; margin-bottom: 12px; }
+  #char-count.over { color: red; }
+  #msg { margin-top: 10px; font-size: 14px; }
+  .reason { background: #f0f7ff; border-left: 3px solid #4a90e2; padding: 10px 12px; font-size: 12px; color: #444; margin-bottom: 16px; border-radius: 0 4px 4px 0; line-height: 1.6; }
+</style>
+</head>
+<body>
 
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  if (req.method === "OPTIONS") return res.status(200).end();
+<h1>𝕏 × 楽天 自動投稿ツール</h1>
+<div class="subtitle">楽天人気商品をClaudeが分析・選定 → Xに自動投稿</div>
 
-  const { genre = "人気 おすすめ", maxPrice = 10000 } = req.query;
+<label>ジャンル</label>
+<select id="genre">
+  <optgroup label="🎁 ギフト・プレゼント">
+    <option value="母の日 ギフト">母の日ギフト</option>
+    <option value="父の日 ギフト">父の日ギフト</option>
+    <option value="誕生日 プレゼント 女性">誕生日プレゼント（女性）</option>
+    <option value="誕生日 プレゼント 男性">誕生日プレゼント（男性）</option>
+    <option value="クリスマス ギフト">クリスマスギフト</option>
+    <option value="結婚祝い ギフト">結婚祝い</option>
+    <option value="出産祝い ギフト">出産祝い</option>
+  </optgroup>
+  <optgroup label="🍱 食品・グルメ">
+    <option value="お取り寄せ グルメ 人気">お取り寄せグルメ</option>
+    <option value="スイーツ お菓子 人気">スイーツ・お菓子</option>
+    <option value="ラーメン 取り寄せ 人気">ラーメン・麺類</option>
+    <option value="肉 ステーキ 取り寄せ">肉・ステーキ</option>
+    <option value="海鮮 取り寄せ 人気">海鮮・魚介</option>
+    <option value="コーヒー 豆 人気">コーヒー・お茶</option>
+    <option value="クラフトビール 酒 人気">お酒・クラフトビール</option>
+    <option value="調味料 人気 おすすめ">調味料・ソース</option>
+    <option value="健康食品 サプリ 人気">健康食品・サプリ</option>
+  </optgroup>
+  <optgroup label="💄 美容・コスメ">
+    <option value="化粧水 スキンケア 人気">化粧水・スキンケア</option>
+    <option value="美容液 人気 おすすめ">美容液・セラム</option>
+    <option value="日焼け止め 人気">日焼け止め</option>
+    <option value="シャンプー トリートメント 人気">シャンプー・ヘアケア</option>
+    <option value="香水 人気 おすすめ">香水・フレグランス</option>
+    <option value="マスク パック 人気">フェイスマスク・パック</option>
+    <option value="ボディクリーム 人気">ボディケア</option>
+  </optgroup>
+  <optgroup label="👗 ファッション">
+    <option value="レディース ワンピース 人気">レディースファッション</option>
+    <option value="メンズ ファッション 人気">メンズファッション</option>
+    <option value="スニーカー 人気 おすすめ">スニーカー・靴</option>
+    <option value="バッグ レディース 人気">バッグ・財布</option>
+    <option value="アクセサリー ネックレス 人気">アクセサリー</option>
+    <option value="帽子 キャップ 人気">帽子・小物</option>
+  </optgroup>
+  <optgroup label="🏠 生活・インテリア">
+    <option value="キッチン 調理器具 人気">キッチン・調理器具</option>
+    <option value="掃除 洗剤 人気">掃除・洗剤</option>
+    <option value="インテリア 雑貨 人気">インテリア・雑貨</option>
+    <option value="収納 グッズ 人気">収納グッズ</option>
+    <option value="寝具 枕 人気">寝具・枕・布団</option>
+    <option value="タオル バス用品 人気">バス・タオル</option>
+    <option value="アロマ 入浴剤 人気">アロマ・リラックス</option>
+  </optgroup>
+  <optgroup label="📱 家電・ガジェット">
+    <option value="スマホ アクセサリー 人気">スマホアクセサリー</option>
+    <option value="イヤホン ワイヤレス 人気">イヤホン・ヘッドフォン</option>
+    <option value="モバイルバッテリー 人気">モバイルバッテリー</option>
+    <option value="家電 小型 人気 おすすめ">小型家電</option>
+    <option value="ゲーム グッズ 人気">ゲーム・周辺機器</option>
+  </optgroup>
+  <optgroup label="🐾 ペット">
+    <option value="犬 おやつ 人気">犬用おやつ・フード</option>
+    <option value="猫 おやつ 人気">猫用おやつ・フード</option>
+    <option value="ペット グッズ 人気">ペット用品・おもちゃ</option>
+  </optgroup>
+  <optgroup label="⛺ アウトドア・スポーツ">
+    <option value="キャンプ 道具 人気">キャンプ・アウトドア</option>
+    <option value="スポーツ ウェア 人気">スポーツウェア</option>
+    <option value="自転車 グッズ 人気">自転車・サイクリング</option>
+    <option value="登山 グッズ 人気">登山・トレッキング</option>
+  </optgroup>
+  <optgroup label="👶 キッズ・ベビー">
+    <option value="赤ちゃん おもちゃ 人気">ベビー・赤ちゃん用品</option>
+    <option value="子供 おもちゃ 人気">おもちゃ・知育</option>
+    <option value="子供服 人気">子供服・ベビー服</option>
+  </optgroup>
+  <optgroup label="🌿 健康・フィットネス">
+    <option value="マッサージ グッズ 人気">マッサージ・リラクゼーション</option>
+    <option value="ダイエット グッズ 人気">ダイエット・フィットネス</option>
+    <option value="プロテイン 人気">プロテイン・栄養補助</option>
+  </optgroup>
+  <optgroup label="📚 趣味・文具">
+    <option value="文房具 おしゃれ 人気">文房具・ステーショナリー</option>
+    <option value="パズル ボードゲーム 人気">ボードゲーム・パズル</option>
+    <option value="手帳 ノート 人気">手帳・ノート</option>
+  </optgroup>
+</select>
 
-  const rakutenAppId = process.env.RAKUTEN_APP_ID;
-  const geminiKey = process.env.GEMINI_API_KEY;
+<label>予算上限（円）</label>
+<input type="number" id="max-price" value="5000" step="500" min="500" />
 
-  if (!rakutenAppId) return res.status(500).json({ success: false, error: "RAKUTEN_APP_IDが未設定です" });
-  if (!geminiKey) return res.status(500).json({ success: false, error: "GEMINI_API_KEYが未設定です" });
+<button id="fetch-btn" onclick="fetchProduct()">🔍 人気商品を分析してポスト文を生成</button>
 
+<div id="result">
+  <div class="product-info">
+    <img id="prod-img" src="" alt="商品画像">
+    <div class="detail">
+      <div class="name" id="prod-name"></div>
+      <div class="price" id="prod-price"></div>
+      <div class="shop" id="prod-shop"></div>
+    </div>
+  </div>
+  <div class="reason" id="prod-reason"></div>
+  <label>投稿テキスト（編集可能）</label>
+  <textarea id="post-text" oninput="updateCount()"></textarea>
+  <div id="char-count">0 / 280</div>
+  <button id="post-btn" onclick="postToX()">𝕏 に投稿する</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+async function fetchProduct() {
+  const btn = document.getElementById("fetch-btn");
+  const genre = document.getElementById("genre").value;
+  const maxPrice = document.getElementById("max-price").value;
+  btn.disabled = true;
+  btn.textContent = "分析中...";
+  document.getElementById("result").style.display = "none";
   try {
-    // 楽天商品検索API
-    const rakutenUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&hits=20&sort=-reviewCount&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
-
-    const rakutenRes = await fetch(rakutenUrl);
-    const rakutenData = await rakutenRes.json();
-
-    if (!rakutenData.Items || rakutenData.Items.length === 0) {
-      return res.status(404).json({ success: false, error: "商品が見つかりませんでした" });
-    }
-
-    // 上位20件を整理
-    const items = rakutenData.Items.slice(0, 20).map(({ Item }) => ({
-      name: Item.itemName.slice(0, 60),
-      price: Item.itemPrice,
-      reviewCount: Item.reviewCount || 0,
-      reviewAverage: Item.reviewAverage || 0,
-      shop: Item.shopName,
-      url: Item.itemUrl,
-      image: Item.mediumImageUrls?.[0]?.imageUrl || "",
-    }));
-
-    // GeminiにJSON形式で最適商品を選ばせる
-    const prompt = `あなたは楽天市場のアフィリエイターです。
-以下の商品リストから、Xポストで最もバズりやすい商品を1つ選んでください。
-
-選定基準：
-- レビュー数が多い（人気の証拠）
-- レビュー評価が高い（4.0以上優先）
-- 価格がコスパ良さそう
-- 商品名がわかりやすく魅力的
-
-商品リスト：
-${JSON.stringify(items, null, 2)}
-
-以下のJSON形式のみで回答してください（他のテキスト不要）：
-{
-  "selectedIndex": 選んだ商品のインデックス番号(0始まり),
-  "reason": "選んだ理由（日本語で50字以内）",
-  "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・URLを含む、ハッシュタグ2〜3個）"
-}`;
-
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
-      }),
-    });
-
-    const geminiData = await geminiRes.json();
-    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    // JSONパース
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Gemini応答のパースに失敗しました");
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const selected = items[parsed.selectedIndex] || items[0];
-
-    return res.status(200).json({
-      success: true,
-      product: selected,
-      reason: parsed.reason,
-      postText: parsed.postText,
-    });
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, error: err.message });
+    const res = await fetch(`/api/get-product?genre=${encodeURIComponent(genre)}&maxPrice=${maxPrice}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || "商品取得失敗");
+    const p = data.product;
+    document.getElementById("prod-img").src = p.image;
+    document.getElementById("prod-name").textContent = p.name;
+    document.getElementById("prod-price").textContent = `¥${Number(p.price).toLocaleString()}`;
+    document.getElementById("prod-shop").textContent = p.shop;
+    document.getElementById("prod-reason").textContent = "💡 " + data.reason;
+    document.getElementById("post-text").value = data.postText;
+    document.getElementById("result").style.display = "block";
+    updateCount();
+  } catch(e) {
+    alert("エラー: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔍 人気商品を分析してポスト文を生成";
   }
 }
+
+function updateCount() {
+  const text = document.getElementById("post-text").value;
+  const count = [...text].length;
+  const el = document.getElementById("char-count");
+  el.textContent = `${count} / 280`;
+  el.className = count > 280 ? "over" : "";
+}
+
+async function postToX() {
+  const btn = document.getElementById("post-btn");
+  const msg = document.getElementById("msg");
+  const text = document.getElementById("post-text").value;
+  if ([...text].length > 280) {
+    msg.innerHTML = '<span style="color:red">❌ 280字を超えています</span>';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "投稿中...";
+  msg.innerHTML = "";
+  try {
+    const res = await fetch("/api/post-tweet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.innerHTML = `<span style="color:green">✅ 投稿成功！ <a href="https://x.com/i/web/status/${data.tweet_id}" target="_blank">ツイートを見る</a></span>`;
+    } else {
+      msg.innerHTML = `<span style="color:red">❌ ${data.error}</span>`;
+    }
+  } catch(e) {
+    msg.innerHTML = `<span style="color:red">❌ 通信エラー: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "𝕏 に投稿する";
+  }
+}
+</script>
+</body>
+</html>
