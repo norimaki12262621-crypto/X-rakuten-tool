@@ -23,8 +23,9 @@ module.exports = async function handler(req, res) {
         Referer: "https://x-rakuten-tool.vercel.app"
       }
     });
+    console.error("rakutenRes.status:", rakutenRes.status);
     const rakutenData = await rakutenRes.json();
-    console.log("rakutenData:", JSON.stringify(rakutenData, null, 2));
+    console.error("rakutenData:", JSON.stringify(rakutenData, null, 2));
 
     if (!rakutenData.Items || rakutenData.Items.length === 0) {
       return res.status(404).json({ success: false, error: "商品が見つかりませんでした" });
