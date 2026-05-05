@@ -1,5 +1,5 @@
 // api/get-product.js
-// 楽天APIで商品取得 → Claudeが最適商品を選定してXポスト文を生成
+// 楽天APIで商品取得 → Geminiが最適商品を選定してXポスト文を生成
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -9,10 +9,10 @@ export default async function handler(req, res) {
   const { genre = "人気 おすすめ", maxPrice = 10000 } = req.query;
 
   const rakutenAppId = process.env.RAKUTEN_APP_ID;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
 
   if (!rakutenAppId) return res.status(500).json({ success: false, error: "RAKUTEN_APP_IDが未設定です" });
-  if (!anthropicKey) return res.status(500).json({ success: false, error: "ANTHROPIC_API_KEYが未設定です" });
+  if (!geminiKey) return res.status(500).json({ success: false, error: "GEMINI_API_KEYが未設定です" });
 
   try {
     // 楽天商品検索API
@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       image: Item.mediumImageUrls?.[0]?.imageUrl || "",
     }));
 
-    // ClaudeにJSON形式で最適商品を選ばせる
+    // GeminiにJSON形式で最適商品を選ばせる
     const prompt = `あなたは楽天市場のアフィリエイターです。
 以下の商品リストから、Xポストで最もバズりやすい商品を1つ選んでください。
 
@@ -56,26 +56,21 @@ ${JSON.stringify(items, null, 2)}
   "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・URLを含む、ハッシュタグ2〜3個）"
 }`;
 
-    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }],
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
       }),
     });
 
-    const claudeData = await claudeRes.json();
-    const raw = claudeData.content?.[0]?.text || "";
+    const geminiData = await geminiRes.json();
+    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     // JSONパース
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("Claude応答のパースに失敗しました");
+    if (!jsonMatch) throw new Error("Gemini応答のパースに失敗しました");
 
     const parsed = JSON.parse(jsonMatch[0]);
     const selected = items[parsed.selectedIndex] || items[0];
