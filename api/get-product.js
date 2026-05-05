@@ -16,9 +16,13 @@ module.exports = async function handler(req, res) {
 
   try {
     // 楽天商品検索API
-    const rakutenUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&hits=20&sort=-sold&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
+    const rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}&hits=20&sort=-sold&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
 
-    const rakutenRes = await fetch(rakutenUrl);
+    const rakutenRes = await fetch(rakutenUrl, {
+      headers: {
+        Referer: "https://x-rakuten-tool.vercel.app"
+      }
+    });
     const rakutenData = await rakutenRes.json();
     console.log("rakutenData:", JSON.stringify(rakutenData, null, 2));
 
