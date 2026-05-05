@@ -16,10 +16,11 @@ module.exports = async function handler(req, res) {
 
   try {
     // 楽天商品検索API
-    const rakutenUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&hits=20&sort=-reviewCount&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
+    const rakutenUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&hits=20&sort=-sold&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
 
     const rakutenRes = await fetch(rakutenUrl);
     const rakutenData = await rakutenRes.json();
+    console.log("rakutenData:", JSON.stringify(rakutenData, null, 2));
 
     if (!rakutenData.Items || rakutenData.Items.length === 0) {
       return res.status(404).json({ success: false, error: "商品が見つかりませんでした" });
