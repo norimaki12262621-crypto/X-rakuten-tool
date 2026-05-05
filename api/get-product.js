@@ -16,7 +16,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // 楽天商品検索API
-    const rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}&hits=20&sort=-sold&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
+    const rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?format=json&keyword=${encodeURIComponent(genre)}&applicationId=${rakutenAppId}&accessKey=${process.env.RAKUTEN_ACCESS_KEY}&affiliateId=534cdfaf.e35a1702.534cdfb0.c0ce9a58&hits=20&sort=-sold&maxPrice=${maxPrice}&imageFlag=1&availability=1`;
 
     const rakutenRes = await fetch(rakutenUrl, {
       headers: {
