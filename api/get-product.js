@@ -20,8 +20,8 @@ module.exports = async function handler(req, res) {
 
     const rakutenRes = await fetch(rakutenUrl, {
       headers: {
-        Referer: "https://x-rakuten-tool.vercel.app",
-        Origin: "https://x-rakuten-tool.vercel.app",
+        Referer: "https://rakuten-gift-tool.vercel.app",
+        Origin: "https://rakuten-gift-tool.vercel.app",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"
       }
     });
