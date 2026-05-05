@@ -33,6 +33,7 @@ module.exports = async function handler(req, res) {
       }
     });
     const rakutenData = await r.json();
+    console.error(JSON.stringify(rakutenData));
 
     if (!rakutenData.Items || rakutenData.Items.length === 0) {
       return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
