@@ -54,6 +54,8 @@ ${JSON.stringify(items, null, 2)}
 
     const geminiData = await geminiRes.json();
     const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.error('geminiRaw:', raw);
+    console.error('geminiData:', JSON.stringify(geminiData));
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Gemini応答のパースに失敗しました');
     const parsed = JSON.parse(jsonMatch[0]);
