@@ -43,7 +43,7 @@ ${JSON.stringify(items, null, 2)}
   "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・URLを含む、ハッシュタグ2〜3個）"
 }`;
 
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiKey}`, {
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
