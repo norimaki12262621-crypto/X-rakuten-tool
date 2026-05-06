@@ -4,36 +4,18 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
-
-  const rakutenAppId = process.env.RAKUTEN_APP_ID;
   const geminiKey = process.env.GEMINI_API_KEY;
-  const accessKey = process.env.RAKUTEN_ACCESS_KEY;
-  const affiliateId = process.env.RAKUTEN_AFFILIATE_ID;
-
-  const params = new URLSearchParams({
-    applicationId: rakutenAppId,
-    accessKey: accessKey,
-    affiliateId: affiliateId,
-    keyword: genre,
-    hits: 20,
-    maxPrice: maxPrice,
-    sort: '-reviewCount',
-    format: 'json',
-    imageFlag: 1,
-    availability: 1,
-  });
-
-  const url = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${params}`;
 
   try {
-    const r = await fetch(url, {
-      headers: {
-        Origin: 'https://x-rakuten-tool.vercel.app',
-        Referer: 'https://x-rakuten-tool.vercel.app/',
-      }
+    // rakuten-gift-tool をプロキシとして楽天APIデータを取得
+    const proxyParams = new URLSearchParams({
+      keyword: genre,
+      maxPrice: maxPrice,
+      hits: 20,
+      sort: '-reviewCount',
     });
-    const rakutenData = await r.json();
-    console.error(JSON.stringify(rakutenData));
+    const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
+    const rakutenData = await proxyRes.json();
 
     if (!rakutenData.Items || rakutenData.Items.length === 0) {
       return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
