@@ -13,10 +13,21 @@
     const u = new URL(url);
     let itemUrl = url;
 
-    // a.r10.to 短縮URLはGETリクエストでリダイレクト先を展開（HEADは非対応サーバーあり）
+    // a.r10.to 短縮URLはGETリクエストでリダイレクト先を展開
     if (u.hostname === 'a.r10.to') {
-      const expanded = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(8000) });
-      itemUrl = expanded.url;
+      try {
+        const expanded = await fetch(url, {
+          redirect: 'follow',
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+          signal: AbortSignal.timeout(10000),
+        });
+        itemUrl = expanded.url;
+        if (!itemUrl || new URL(itemUrl).hostname === 'a.r10.to') {
+          return res.status(400).json({ success: false, error: 'a.r10.toのURLを展開できませんでした。URLを再確認してください' });
+        }
+      } catch(expandErr) {
+        return res.status(400).json({ success: false, error: 'a.r10.toのURL展開に失敗しました。しばらくしてから再度お試しください' });
+      }
     } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
       if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
