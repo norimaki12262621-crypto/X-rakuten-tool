@@ -12,11 +12,24 @@
   try {
     const u = new URL(url);
     let itemUrl = url;
-    if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
+
+    // a.r10.to 短縮URLはHEADリクエストでリダイレクト先を展開
+    if (u.hostname === 'a.r10.to') {
+      const expanded = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+      itemUrl = expanded.url;
+    } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
       if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
       itemUrl = decodeURIComponent(pc);
     }
+
+    // 展開後もアフィリエイトURLの場合はpcパラメータを抽出
+    const expandedU = new URL(itemUrl);
+    if (expandedU.hostname.includes('hb.afl.rakuten.co.jp')) {
+      const pc = expandedU.searchParams.get('pc');
+      if (pc) itemUrl = decodeURIComponent(pc);
+    }
+
     const itemU = new URL(itemUrl);
     const parts = itemU.pathname.split('/').filter(Boolean);
     if (itemU.hostname.includes('item.rakuten.co.jp') && parts.length >= 2) {
