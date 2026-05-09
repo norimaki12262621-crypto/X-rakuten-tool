@@ -64,9 +64,9 @@
   <div id="tab-url">
     <label>楽天商品ページのURL</label>
     <div class="url-row">
-      <input type="url" id="product-url" class="url-input" placeholder="https://item.rakuten.co.jp/shop/item-code/" />
+      <input type="text" id="product-url" class="url-input" placeholder="https://item.rakuten.co.jp/shop/item-code/" />
     </div>
-    <div class="url-hint">例: https://item.rakuten.co.jp/rl-waffle/0000107/</div>
+    <div class="url-hint">例: https://item.rakuten.co.jp/rl-waffle/0000107/ または https://a.r10.to/xxxxx</div>
   </div>
 
   <!-- ジャンル選択タブ -->
@@ -168,6 +168,16 @@ async function fetchProduct() {
     if (currentTab === 'url') {
       const url = document.getElementById('product-url').value.trim();
       if (!url) throw new Error('URLを入力してください');
+      try {
+        const u = new URL(url);
+        const host = u.hostname;
+        if (!host.includes('rakuten.co.jp') && host !== 'a.r10.to') {
+          throw new Error('楽天商品ページのURLを入力してください（item.rakuten.co.jp または a.r10.to）');
+        }
+      } catch(urlErr) {
+        if (urlErr.message.includes('rakuten')) throw urlErr;
+        throw new Error('有効なURLを入力してください');
+      }
       res = await fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`);
     } else {
       const genre = document.getElementById('genre').value;
