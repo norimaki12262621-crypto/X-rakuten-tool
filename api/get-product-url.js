@@ -91,13 +91,18 @@ URL: ${item.url}
     );
 
     const geminiData = await geminiRes.json();
+    console.error('[gemini] status:', geminiRes.status);
+    console.error('[gemini] data:', JSON.stringify(geminiData));
     if (geminiData.error) throw new Error(`Gemini: ${geminiData.error.message}`);
 
     const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.error('[gemini] raw:', raw);
+    console.error('[gemini] finishReason:', geminiData.candidates?.[0]?.finishReason);
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch(e) {
+      console.error('[gemini] JSON.parse failed:', e.message);
       const m = raw.match(/\{[\s\S]*\}/);
       if (!m) throw new Error('Gemini応答のパースに失敗しました');
       parsed = JSON.parse(m[0]);
