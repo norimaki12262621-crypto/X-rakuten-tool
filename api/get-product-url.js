@@ -1,4 +1,4 @@
-module.exports = async function handler(req, res) {
+﻿module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -12,13 +12,11 @@ module.exports = async function handler(req, res) {
   try {
     const u = new URL(url);
     let itemUrl = url;
-
     if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
       if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
       itemUrl = decodeURIComponent(pc);
     }
-
     const itemU = new URL(itemUrl);
     const parts = itemU.pathname.split('/').filter(Boolean);
     if (itemU.hostname.includes('item.rakuten.co.jp') && parts.length >= 2) {
@@ -75,9 +73,10 @@ URL: ${item.url}
 以下のJSON形式のみで回答してください。
 - postTextにはURLをそのまま含めること（プレースホルダー禁止）
 - postText全体をURL込みで140文字以内に収めること
-- ハッシュタグは1〜2個まで
+- 絵文字は使わないこと
+- ハッシュタグは1～2個まで
 {
-  "postText": "Xに投稿する文章（URL込み140文字以内、絵文字あり、商品名・価格・魅力・URL・ハッシュタグ1〜2個）",
+  "postText": "Xに投稿する文章（URL込み140文字以内、絵文字なし、商品名・価格・魅力・URL・ハッシュタグ1～2個）",
   "reason": "この商品を選んだ理由（50字以内）"
 }`;
 
@@ -90,7 +89,7 @@ URL: ${item.url}
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 1024,
             responseMimeType: 'application/json',
             thinkingConfig: { thinkingBudget: 0 },
           },
@@ -112,26 +111,17 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
-    // 孤立サロゲート・PUA・C1制御文字を除去（uフラグで正確にコードポイント単位で処理）
-    const sanitize = (str) => str
-      .replace(/[\uD800-\uDFFF]/gu, '')
-      .replace(/[-]/gu, '')
-      .replace(/[\x80-\x9F]/g, '');
-
-    let postText = sanitize((parsed.postText || '').replace(/\\n/g, '\n'))
-      .replace(/\[URL\]/g, item.url);
+    let postText = (parsed.postText || '').replace(/\\n/g, '\n').replace(/\[URL\]/g, item.url);
 
     // URLを末尾に付けた形式で常に140文字以内に収める
     const urlSuffix = '\n' + item.url;
     const maxBodyLen = 140 - [...urlSuffix].length;
-
     const urlIdx = postText.indexOf(item.url);
     let body = (urlIdx >= 0 ? postText.slice(0, urlIdx) : postText).trimEnd();
     const bodyChars = [...body];
     if (bodyChars.length > maxBodyLen) {
       body = bodyChars.slice(0, maxBodyLen).join('').trimEnd();
     }
-
     postText = body + urlSuffix;
 
     return res.status(200).json({
