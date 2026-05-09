@@ -117,8 +117,10 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
-    // [URL]プレースホルダーを短縮URLで置換
-    let postText = (parsed.postText || '').replace(/\[URL\]/g, item.url);
+    // Geminiがリテラル\nを返す場合があるので実際の改行に正規化してから処理
+    let postText = (parsed.postText || '')
+      .replace(/\\n/g, '\n')
+      .replace(/\[URL\]/g, item.url);
 
     // URLを末尾に付けた形で常に140文字以内に収める
     const LIMIT = 140;
