@@ -1,74 +1,75 @@
-﻿const https = require('https');
-const http = require('http');
+export const config = { runtime: 'edge' };
 
-function followRedirects(startUrl, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const deadline = setTimeout(
-      () => reject(Object.assign(new Error('timeout'), { name: 'AbortError' })),
-      timeoutMs
-    );
-    function hop(url, count) {
-      if (count > 10) { clearTimeout(deadline); return resolve(url); }
-      const lib = url.startsWith('https:') ? https : http;
-      const req = lib.get(url, {
+async function followRedirects(startUrl, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let current = startUrl;
+    for (let hop = 0; hop < 10; hop++) {
+      const resp = await fetch(current, {
+        method: 'GET',
+        redirect: 'manual',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
         },
-      }, (res) => {
-        res.resume();
-        const { statusCode, headers } = res;
-        if (statusCode >= 300 && statusCode < 400 && headers.location) {
-          const loc = headers.location;
-          const next = /^https?:\/\//.test(loc) ? loc : new URL(loc, url).href;
-          hop(next, count + 1);
-        } else {
-          clearTimeout(deadline);
-          resolve(url);
-        }
+        signal: controller.signal,
       });
-      req.on('error', (err) => { clearTimeout(deadline); reject(err); });
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers.get('location');
+        if (!loc) break;
+        current = /^https?:\/\//.test(loc) ? loc : new URL(loc, current).href;
+      } else {
+        break;
+      }
     }
-    hop(startUrl, 0);
-  });
+    return current;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+export default async function handler(request) {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Content-Type': 'application/json',
+  };
+  const json = (data, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: corsHeaders });
 
-  const { url } = req.query;
+  if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
+
+  const { searchParams } = new URL(request.url);
+  const url = searchParams.get('url');
   const geminiKey = process.env.GEMINI_API_KEY;
 
-  if (!url) return res.status(400).json({ success: false, error: 'URLを指定してください' });
+  if (!url) return json({ success: false, error: 'URLを指定してください' }, 400);
 
   let shopCode, itemCode;
   try {
     const u = new URL(url);
     let itemUrl = url;
 
-    // a.r10.to 短縮URLをhttpsモジュールでリダイレクト展開（fetch/undiciはVercelでブロックされるため）
     if (u.hostname === 'a.r10.to') {
       try {
         itemUrl = await followRedirects(url);
         if (new URL(itemUrl).hostname === 'a.r10.to') {
-          return res.status(400).json({ success: false, error: 'a.r10.toのURLを展開できませんでした。URLを再確認してください' });
+          return json({ success: false, error: 'a.r10.toのURLを展開できませんでした。URLを再確認してください' }, 400);
         }
-      } catch(expandErr) {
+      } catch (expandErr) {
         const msg = expandErr.name === 'AbortError'
           ? 'a.r10.toのURL展開がタイムアウトしました。しばらくしてから再度お試しください'
           : 'a.r10.toのURL展開に失敗しました: ' + expandErr.message;
-        return res.status(400).json({ success: false, error: msg });
+        return json({ success: false, error: msg }, 400);
       }
     } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
-      if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
+      if (!pc) return json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' }, 400);
       itemUrl = decodeURIComponent(pc);
     }
 
-    // 展開後もアフィリエイトURLの場合はpcパラメータを抽出
     const expandedU = new URL(itemUrl);
     if (expandedU.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = expandedU.searchParams.get('pc');
@@ -81,10 +82,10 @@ module.exports = async function handler(req, res) {
       shopCode = parts[0];
       itemCode = parts[1];
     } else {
-      return res.status(400).json({ success: false, error: '楽天商品ページのURLを入力してください' });
+      return json({ success: false, error: '楽天商品ページのURLを入力してください' }, 400);
     }
-  } catch(e) {
-    return res.status(400).json({ success: false, error: '無効なURLです' });
+  } catch (e) {
+    return json({ success: false, error: '無効なURLです' }, 400);
   }
 
   try {
@@ -94,7 +95,7 @@ module.exports = async function handler(req, res) {
     const rakutenData = await proxyRes.json();
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
-    if (!rawItems.length) return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
+    if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした' }, 404);
 
     const matched = rawItems.find(i => i.shopCode === shopCode) || rawItems[0];
 
@@ -106,7 +107,7 @@ module.exports = async function handler(req, res) {
       const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(affUrl)}`);
       const tinyText = await tinyRes.text();
       if (tinyText.trim().startsWith('http')) shortUrl = tinyText.trim();
-    } catch(e) {
+    } catch (e) {
       console.error('URL shortening failed:', e.message);
     }
 
@@ -162,22 +163,19 @@ URL: ${item.url}
     let parsed;
     try {
       parsed = JSON.parse(raw);
-    } catch(e) {
+    } catch (e) {
       const m = raw.match(/\{[\s\S]*\}/);
       if (!m) throw new Error('Gemini応答のパースに失敗しました');
       parsed = JSON.parse(m[0]);
     }
 
-    // 孤立サロゲートを除去: encodeURIComponentは孤立サロゲートでURIErrorを投げる
-    // [...str]でコードポイント単位に分割することで有効な絵文字は保持される
     const sanitize = (str) => [...str].filter(c => {
-      try { encodeURIComponent(c); return true; } catch(e) { return false; }
+      try { encodeURIComponent(c); return true; } catch (e) { return false; }
     }).join('');
 
     let postText = sanitize((parsed.postText || '').replace(/\\n/g, '\n'))
       .replace(/\[URL\]/g, item.url);
 
-    // URLを末尾に付けた形式で常に140文字以内に収める
     const urlSuffix = '\n' + item.url;
     const maxBodyLen = 140 - [...urlSuffix].length;
     const urlIdx = postText.indexOf(item.url);
@@ -188,15 +186,9 @@ URL: ${item.url}
     }
     postText = body + urlSuffix;
 
-    return res.status(200).json({
-      success: true,
-      product: item,
-      reason: parsed.reason || '',
-      postText,
-    });
-
-  } catch(err) {
+    return json({ success: true, product: item, reason: parsed.reason || '', postText });
+  } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, error: err.message });
+    return json({ success: false, error: err.message }, 500);
   }
-};
+}
