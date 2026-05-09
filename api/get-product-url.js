@@ -116,9 +116,17 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
-    // Geminiがリテラル\nを返す場合があるので実際の改行に正規化してから処理
-    let postText = (parsed.postText || '')
-      .replace(/\\n/g, '\n')
+    // PUA・孤立サロゲートなど不正コードポイントを除去してからURL置換
+    const sanitize = (str) => [...str].filter(c => {
+      const cp = c.codePointAt(0);
+      if (cp === undefined) return false;
+      if (cp >= 0xD800 && cp <= 0xDFFF) return false; // 孤立サロゲート
+      if (cp >= 0xE000 && cp <= 0xF8FF) return false; // 基本PUA
+      if (cp >= 0xF0000) return false;                 // 補助PUA
+      return true;
+    }).join('');
+
+    let postText = sanitize((parsed.postText || '').replace(/\\n/g, '\n'))
       .replace(/\[URL\]/g, item.url);
 
     // 本文＋URL末尾の形式に正規化し、常に140文字以内に収める
