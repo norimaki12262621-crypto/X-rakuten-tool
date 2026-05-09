@@ -139,6 +139,7 @@ URL: ${item.url}
       product: item,
       reason: parsed.reason || '',
       postText,
+      _d: { urlIdx: postText.indexOf(item.url), bodyLen: [...body].length, totalLen: [...postText].length },
     });
 
   } catch(err) {
