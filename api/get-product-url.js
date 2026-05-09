@@ -92,12 +92,13 @@ URL: ${item.url}
 
     const geminiData = await geminiRes.json();
     console.error('[gemini] status:', geminiRes.status);
-    console.error('[gemini] data:', JSON.stringify(geminiData));
+    console.error('[gemini] finishReason:', geminiData.candidates?.[0]?.finishReason);
     if (geminiData.error) throw new Error(`Gemini: ${geminiData.error.message}`);
 
-    const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    console.error('[gemini] raw:', raw);
-    console.error('[gemini] finishReason:', geminiData.candidates?.[0]?.finishReason);
+    // gemini-2.5-flash はthinkingモードでparts[0]が思考テキストになるため、thought:trueでないpartを探す
+    const parts = geminiData.candidates?.[0]?.content?.parts || [];
+    const raw = parts.find(p => !p.thought)?.text || parts[parts.length - 1]?.text || '';
+    console.error('[gemini] parts count:', parts.length, 'raw:', raw.slice(0, 200));
     let parsed;
     try {
       parsed = JSON.parse(raw);
