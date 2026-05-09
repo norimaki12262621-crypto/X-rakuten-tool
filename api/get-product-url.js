@@ -89,7 +89,7 @@ export default async function handler(request) {
   }
 
   try {
-    const keyword = itemCode.replace(/-/g, ' ').substring(0, 30);
+    const keyword = itemCode.replace(/[-_]/g, ' ').substring(0, 30);
     const proxyParams = new URLSearchParams({ keyword, hits: 20, sort: '-reviewCount' });
     const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
     const rakutenData = await proxyRes.json();
