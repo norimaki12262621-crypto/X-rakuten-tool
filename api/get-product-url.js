@@ -105,7 +105,7 @@ URL: ${item.url}
     } catch(e) {
       console.error('[gemini] JSON.parse failed:', e.message);
       const m = raw.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error('Gemini応答のパースに失敗しました');
+      if (!m) throw new Error(`パース失敗 finishReason=${geminiData.candidates?.[0]?.finishReason} parts=${parts.length} raw=${raw.slice(0,300)}`);
       parsed = JSON.parse(m[0]);
     }
 
