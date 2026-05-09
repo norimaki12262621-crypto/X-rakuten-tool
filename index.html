@@ -21,11 +21,16 @@
   .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #888; background: none; border-top: none; border-left: none; border-right: none; font-family: sans-serif; }
   .tab.active { color: #000; border-bottom-color: #000; font-weight: bold; }
 
-  .genre-row { display: flex; gap: 10px; margin-bottom: 0; }
-  .genre-row > div { flex: 1; }
-  .genre-row label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 6px; }
-  select, input[type=number] { width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; background: #fff; outline: none; }
-  select:focus, input[type=number]:focus { border-color: #000; }
+  input[type=number] { width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; background: #fff; outline: none; }
+  input[type=number]:focus { border-color: #000; }
+  .preset-section { margin-bottom: 14px; }
+  .preset-section-label { font-size: 11px; font-weight: bold; color: #888; margin-bottom: 7px; }
+  .preset-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset-chip { padding: 5px 11px; border: 1px solid #ddd; border-radius: 20px; font-size: 12px; cursor: pointer; background: #fff; color: #333; font-family: sans-serif; }
+  .preset-chip:hover { border-color: #999; }
+  .preset-chip.active { background: #000; color: #fff; border-color: #000; }
+  .budget-row { margin-top: 14px; }
+  .budget-row label { display: block; font-size: 12px; font-weight: bold; color: #555; margin-bottom: 6px; }
 
   .btn-main { display: block; width: 100%; background: #000; color: #fff; border: none; padding: 13px; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; margin-top: 16px; }
   .btn-main:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -71,76 +76,103 @@
 
   <!-- ジャンル選択タブ -->
   <div id="tab-genre" style="display:none;">
-    <div class="genre-row">
-      <div>
-        <label>ジャンル</label>
-        <select id="genre">
-          <optgroup label="🎁 ギフト・プレゼント">
-            <option value="母の日 ギフト">母の日ギフト</option>
-            <option value="父の日 ギフト">父の日ギフト</option>
-            <option value="誕生日 プレゼント 女性">誕生日プレゼント（女性）</option>
-            <option value="誕生日 プレゼント 男性">誕生日プレゼント（男性）</option>
-            <option value="クリスマス ギフト">クリスマスギフト</option>
-            <option value="結婚祝い ギフト">結婚祝い</option>
-            <option value="出産祝い ギフト">出産祝い</option>
-          </optgroup>
-          <optgroup label="🍱 食品・グルメ">
-            <option value="お取り寄せ グルメ 人気">お取り寄せグルメ</option>
-            <option value="スイーツ お菓子 人気">スイーツ・お菓子</option>
-            <option value="ラーメン 取り寄せ 人気">ラーメン・麺類</option>
-            <option value="肉 ステーキ 取り寄せ">肉・ステーキ</option>
-            <option value="海鮮 取り寄せ 人気">海鮮・魚介</option>
-          </optgroup>
-          <optgroup label="💄 美容・コスメ">
-            <option value="化粧水 スキンケア 人気">化粧水・スキンケア</option>
-            <option value="美容液 人気 おすすめ">美容液・セラム</option>
-            <option value="日焼け止め 人気">日焼け止め</option>
-            <option value="シャンプー トリートメント 人気">シャンプー・ヘアケア</option>
-          </optgroup>
-          <optgroup label="🏠 生活・インテリア">
-            <option value="キッチン 調理器具 人気">キッチン・調理器具</option>
-            <option value="インテリア 雑貨 人気">インテリア・雑貨</option>
-            <option value="寝具 枕 人気">寝具・枕・布団</option>
-          </optgroup>
-          <optgroup label="📱 家電・ガジェット">
-            <option value="イヤホン ワイヤレス 人気">イヤホン・ヘッドフォン</option>
-            <option value="モバイルバッテリー 人気">モバイルバッテリー</option>
-            <option value="家電 小型 人気 おすすめ">小型家電</option>
-          </optgroup>
-          <optgroup label="🐾 ペット">
-            <option value="犬 おやつ 人気">犬用おやつ・フード</option>
-            <option value="猫 おやつ 人気">猫用おやつ・フード</option>
-          </optgroup>
-          <optgroup label="🎁 イベント・季節">
-            <option value="父の日 ギフト プレゼント">父の日ギフト</option>
-            <option value="敬老の日 ギフト プレゼント">敬老の日ギフト</option>
-            <option value="ハロウィン グッズ 人気">ハロウィングッズ</option>
-            <option value="クリスマス ギフト プレゼント 人気">クリスマスギフト</option>
-            <option value="お正月 お年賀 ギフト">お正月・お年賀</option>
-            <option value="卒業 入学祝い プレゼント">卒業・入学祝い</option>
-            <option value="就職 昇進祝い プレゼント">就職・昇進祝い</option>
-            <option value="結婚記念日 ギフト プレゼント">結婚記念日ギフト</option>
-            <option value="バレンタイン ギフト チョコ 人気">バレンタインギフト</option>
-            <option value="ホワイトデー ギフト お返し 人気">ホワイトデーギフト</option>
-          </optgroup>
-          <optgroup label="🎀 可愛い雑貨">
-            <option value="可愛い 収納 ケース 人気">可愛い収納・入れ物</option>
-            <option value="韓国 雑貨 インテリア 人気">韓国雑貨・インテリア</option>
-            <option value="おしゃれ 食器 キッチン雑貨 人気">おしゃれ食器・キッチン雑貨</option>
-            <option value="推し活 グッズ 人気">推し活グッズ</option>
-            <option value="ぬいぐるみ かわいい おもちゃ 人気">ぬいぐるみ・可愛いおもちゃ</option>
-            <option value="フォトフレーム アルバム おしゃれ 人気">フォトフレーム・アルバム</option>
-            <option value="可愛い ポーチ バッグ 人気">可愛いポーチ・バッグ</option>
-            <option value="アクセサリーケース おしゃれ 人気">アクセサリーケース</option>
-            <option value="おしゃれ 文房具 ステーショナリー 人気">おしゃれ文房具</option>
-            <option value="スマホケース 可愛い おしゃれ 人気">可愛いスマホケース</option>
-          </optgroup>
-        </select>
+    <input type="hidden" id="genre" value="母の日 ギフト">
+
+    <div class="preset-section">
+      <div class="preset-section-label">🎁 ギフト・プレゼント</div>
+      <div class="preset-chips">
+        <button class="preset-chip active" onclick="selectGenre(this,'母の日 ギフト')">母の日ギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'父の日 ギフト')">父の日ギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'誕生日 プレゼント 女性')">誕生日（女性）</button>
+        <button class="preset-chip" onclick="selectGenre(this,'誕生日 プレゼント 男性')">誕生日（男性）</button>
+        <button class="preset-chip" onclick="selectGenre(this,'クリスマス ギフト')">クリスマスギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'結婚祝い ギフト')">結婚祝い</button>
+        <button class="preset-chip" onclick="selectGenre(this,'出産祝い ギフト')">出産祝い</button>
       </div>
-      <div>
-        <label>予算上限（円）</label>
-        <input type="number" id="max-price" value="5000" step="500" min="500" />
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">🎁 イベント・季節</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'父の日 ギフト プレゼント')">父の日ギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'敬老の日 ギフト プレゼント')">敬老の日ギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'ハロウィン グッズ 人気')">ハロウィングッズ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'クリスマス ギフト プレゼント 人気')">クリスマスギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'お正月 お年賀 ギフト')">お正月・お年賀</button>
+        <button class="preset-chip" onclick="selectGenre(this,'卒業 入学祝い プレゼント')">卒業・入学祝い</button>
+        <button class="preset-chip" onclick="selectGenre(this,'就職 昇進祝い プレゼント')">就職・昇進祝い</button>
+        <button class="preset-chip" onclick="selectGenre(this,'結婚記念日 ギフト プレゼント')">結婚記念日ギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'バレンタイン ギフト チョコ 人気')">バレンタインギフト</button>
+        <button class="preset-chip" onclick="selectGenre(this,'ホワイトデー ギフト お返し 人気')">ホワイトデーギフト</button>
       </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">🎀 可愛い雑貨</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'可愛い 収納 ケース 人気')">可愛い収納・入れ物</button>
+        <button class="preset-chip" onclick="selectGenre(this,'韓国 雑貨 インテリア 人気')">韓国雑貨・インテリア</button>
+        <button class="preset-chip" onclick="selectGenre(this,'おしゃれ 食器 キッチン雑貨 人気')">おしゃれ食器・キッチン雑貨</button>
+        <button class="preset-chip" onclick="selectGenre(this,'推し活 グッズ 人気')">推し活グッズ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'ぬいぐるみ かわいい おもちゃ 人気')">ぬいぐるみ・おもちゃ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'フォトフレーム アルバム おしゃれ 人気')">フォトフレーム・アルバム</button>
+        <button class="preset-chip" onclick="selectGenre(this,'可愛い ポーチ バッグ 人気')">可愛いポーチ・バッグ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'アクセサリーケース おしゃれ 人気')">アクセサリーケース</button>
+        <button class="preset-chip" onclick="selectGenre(this,'おしゃれ 文房具 ステーショナリー 人気')">おしゃれ文房具</button>
+        <button class="preset-chip" onclick="selectGenre(this,'スマホケース 可愛い おしゃれ 人気')">可愛いスマホケース</button>
+      </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">🍱 食品・グルメ</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'お取り寄せ グルメ 人気')">お取り寄せグルメ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'スイーツ お菓子 人気')">スイーツ・お菓子</button>
+        <button class="preset-chip" onclick="selectGenre(this,'ラーメン 取り寄せ 人気')">ラーメン・麺類</button>
+        <button class="preset-chip" onclick="selectGenre(this,'肉 ステーキ 取り寄せ')">肉・ステーキ</button>
+        <button class="preset-chip" onclick="selectGenre(this,'海鮮 取り寄せ 人気')">海鮮・魚介</button>
+      </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">💄 美容・コスメ</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'化粧水 スキンケア 人気')">化粧水・スキンケア</button>
+        <button class="preset-chip" onclick="selectGenre(this,'美容液 人気 おすすめ')">美容液・セラム</button>
+        <button class="preset-chip" onclick="selectGenre(this,'日焼け止め 人気')">日焼け止め</button>
+        <button class="preset-chip" onclick="selectGenre(this,'シャンプー トリートメント 人気')">シャンプー・ヘアケア</button>
+      </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">🏠 生活・インテリア</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'キッチン 調理器具 人気')">キッチン・調理器具</button>
+        <button class="preset-chip" onclick="selectGenre(this,'インテリア 雑貨 人気')">インテリア・雑貨</button>
+        <button class="preset-chip" onclick="selectGenre(this,'寝具 枕 人気')">寝具・枕・布団</button>
+      </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">📱 家電・ガジェット</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'イヤホン ワイヤレス 人気')">イヤホン・ヘッドフォン</button>
+        <button class="preset-chip" onclick="selectGenre(this,'モバイルバッテリー 人気')">モバイルバッテリー</button>
+        <button class="preset-chip" onclick="selectGenre(this,'家電 小型 人気 おすすめ')">小型家電</button>
+      </div>
+    </div>
+
+    <div class="preset-section">
+      <div class="preset-section-label">🐾 ペット</div>
+      <div class="preset-chips">
+        <button class="preset-chip" onclick="selectGenre(this,'犬 おやつ 人気')">犬用おやつ・フード</button>
+        <button class="preset-chip" onclick="selectGenre(this,'猫 おやつ 人気')">猫用おやつ・フード</button>
+      </div>
+    </div>
+
+    <div class="budget-row">
+      <label>予算上限（円）</label>
+      <input type="number" id="max-price" value="5000" step="500" min="500" />
     </div>
   </div>
 
@@ -167,6 +199,12 @@
 
 <script>
 let currentTab = 'url';
+
+function selectGenre(el, value) {
+  document.querySelectorAll('.preset-chip').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('genre').value = value;
+}
 
 function switchTab(tab) {
   currentTab = tab;
