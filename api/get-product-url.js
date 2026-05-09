@@ -68,9 +68,9 @@ module.exports = async function handler(req, res) {
 ショップ: ${item.shop}
 URL: ${item.url}
 
-以下のJSON形式で回答してください:
+以下のJSON形式のみで回答してください。postTextには必ず上記のURLをそのまま文中に含めてください（[URL]などのプレースホルダーは使わないこと）:
 {
-  "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・URLを含む、ハッシュタグ2〜3個）",
+  "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・実際のURLをそのまま記載・ハッシュタグ2〜3個）",
   "reason": "この商品を選んだ理由（50字以内）"
 }`;
 
@@ -110,11 +110,14 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
+    // [URL]プレースホルダーが残っていた場合は実際のアフィリエイトURLで置換
+    const postText = (parsed.postText || '').replace(/\[URL\]/g, item.url);
+
     return res.status(200).json({
       success: true,
       product: item,
       reason: parsed.reason || '',
-      postText: parsed.postText || '',
+      postText,
     });
 
   } catch(err) {
