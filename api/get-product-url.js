@@ -8,13 +8,11 @@ module.exports = async function handler(req, res) {
 
   if (!url) return res.status(400).json({ success: false, error: 'URLを指定してください' });
 
-  // アフィリエイトURL・直接URLの両方に対応してitem.rakuten.co.jpのURLを抽出
   let shopCode, itemCode;
   try {
     const u = new URL(url);
     let itemUrl = url;
 
-    // hb.afl.rakuten.co.jp のアフィリエイトURLの場合、pcパラメータから実URLを取得
     if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
       if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
@@ -27,14 +25,13 @@ module.exports = async function handler(req, res) {
       shopCode = parts[0];
       itemCode = parts[1];
     } else {
-      return res.status(400).json({ success: false, error: '楽天商品ページのURLを入力してください（例: https://item.rakuten.co.jp/shop/item/ またはアフィリエイトURL）' });
+      return res.status(400).json({ success: false, error: '楽天商品ページのURLを入力してください' });
     }
   } catch(e) {
     return res.status(400).json({ success: false, error: '無効なURLです' });
   }
 
   try {
-    // rakuten-gift-tool プロキシ経由で商品を検索
     const keyword = itemCode.replace(/-/g, ' ').substring(0, 30);
     const proxyParams = new URLSearchParams({ keyword, hits: 20, sort: '-reviewCount' });
     const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
@@ -43,13 +40,11 @@ module.exports = async function handler(req, res) {
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
     if (!rawItems.length) return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
 
-    // shopCode一致で絞り込み、なければ先頭
     const matched = rawItems.find(i => i.shopCode === shopCode) || rawItems[0];
 
     const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
     const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
 
-    // TinyURL でアフィリエイトURLを短縮
     let shortUrl = affUrl;
     try {
       const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(affUrl)}`);
@@ -78,7 +73,7 @@ module.exports = async function handler(req, res) {
 URL: ${item.url}
 
 以下のJSON形式のみで回答してください。
-- postTextにはURLをそのまま含めること（[URL]などのプレースホルダー禁止）
+- postTextにはURLをそのまま含めること（プレースホルダー禁止）
 - postText全体をURL込みで140文字以内に収めること
 - ハッシュタグは1〜2個まで
 {
@@ -87,7 +82,7 @@ URL: ${item.url}
 }`;
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,8 +90,8 @@ URL: ${item.url}
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1024,
-            thinkingConfig: { thinkingBudget: 0 },
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
           },
         }),
       }
@@ -105,8 +100,8 @@ URL: ${item.url}
     const geminiData = await geminiRes.json();
     if (geminiData.error) throw new Error(`Gemini: ${geminiData.error.message}`);
 
-    const parts = geminiData.candidates?.[0]?.content?.parts || [];
-    const raw = parts.find(p => !p.thought)?.text || parts[parts.length - 1]?.text || '';
+    const gparts = geminiData.candidates?.[0]?.content?.parts || [];
+    const raw = gparts.find(p => !p.thought)?.text || gparts[gparts.length - 1]?.text || '';
     let parsed;
     try {
       parsed = JSON.parse(raw);
@@ -116,20 +111,16 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
-    // PUA・孤立サロゲートなど不正コードポイントを除去してからURL置換
-    const sanitize = (str) => [...str].filter(c => {
-      const cp = c.codePointAt(0);
-      if (cp === undefined) return false;
-      if (cp >= 0xD800 && cp <= 0xDFFF) return false; // 孤立サロゲート
-      if (cp >= 0xE000 && cp <= 0xF8FF) return false; // 基本PUA
-      if (cp >= 0xF0000) return false;                 // 補助PUA
-      return true;
-    }).join('');
+    // 孤立サロゲート・PUA・C1制御文字を除去（uフラグで正確にコードポイント単位で処理）
+    const sanitize = (str) => str
+      .replace(/[\uD800-\uDFFF]/gu, '')
+      .replace(/[-]/gu, '')
+      .replace(/[\x80-\x9F]/g, '');
 
     let postText = sanitize((parsed.postText || '').replace(/\\n/g, '\n'))
       .replace(/\[URL\]/g, item.url);
 
-    // 本文＋URL末尾の形式に正規化し、常に140文字以内に収める
+    // URLを末尾に付けた形式で常に140文字以内に収める
     const urlSuffix = '\n' + item.url;
     const maxBodyLen = 140 - [...urlSuffix].length;
 
@@ -147,7 +138,6 @@ URL: ${item.url}
       product: item,
       reason: parsed.reason || '',
       postText,
-      _d: { urlIdx: postText.indexOf(item.url), bodyLen: [...body].length, totalLen: [...postText].length },
     });
 
   } catch(err) {
