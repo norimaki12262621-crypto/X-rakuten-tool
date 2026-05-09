@@ -83,8 +83,9 @@ URL: ${item.url}
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1000,
+            maxOutputTokens: 2048,
             responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }
@@ -105,7 +106,7 @@ URL: ${item.url}
     } catch(e) {
       console.error('[gemini] JSON.parse failed:', e.message);
       const m = raw.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error(`パース失敗 finishReason=${geminiData.candidates?.[0]?.finishReason} parts=${parts.length} raw=${raw.slice(0,300)}`);
+      if (!m) throw new Error('Gemini応答のパースに失敗しました');
       parsed = JSON.parse(m[0]);
     }
 
