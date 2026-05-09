@@ -140,6 +140,7 @@ URL: ${item.url}
       product: item,
       reason: parsed.reason || '',
       postText,
+      _debug: { jsLen: [...postText].length, urlSuffixLen: [...urlSuffix].length, bodyLen: [...body].length },
     });
 
   } catch(err) {
