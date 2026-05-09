@@ -1,4 +1,40 @@
-﻿module.exports = async function handler(req, res) {
+﻿const https = require('https');
+const http = require('http');
+
+function followRedirects(startUrl, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const deadline = setTimeout(
+      () => reject(Object.assign(new Error('timeout'), { name: 'AbortError' })),
+      timeoutMs
+    );
+    function hop(url, count) {
+      if (count > 10) { clearTimeout(deadline); return resolve(url); }
+      const lib = url.startsWith('https:') ? https : http;
+      const req = lib.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+        },
+      }, (res) => {
+        res.resume();
+        const { statusCode, headers } = res;
+        if (statusCode >= 300 && statusCode < 400 && headers.location) {
+          const loc = headers.location;
+          const next = /^https?:\/\//.test(loc) ? loc : new URL(loc, url).href;
+          hop(next, count + 1);
+        } else {
+          clearTimeout(deadline);
+          resolve(url);
+        }
+      });
+      req.on('error', (err) => { clearTimeout(deadline); reject(err); });
+    }
+    hop(startUrl, 0);
+  });
+}
+
+module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -13,33 +49,17 @@
     const u = new URL(url);
     let itemUrl = url;
 
-    // a.r10.to 短縮URLをGETリクエストでリダイレクト先に展開
+    // a.r10.to 短縮URLをhttpsモジュールでリダイレクト展開（fetch/undiciはVercelでブロックされるため）
     if (u.hostname === 'a.r10.to') {
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 10000);
-        let expanded;
-        try {
-          expanded = await fetch(url, {
-            method: 'GET',
-            redirect: 'follow',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            },
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timer);
-        }
-        itemUrl = expanded.url;
-        if (!itemUrl || new URL(itemUrl).hostname === 'a.r10.to') {
+        itemUrl = await followRedirects(url);
+        if (new URL(itemUrl).hostname === 'a.r10.to') {
           return res.status(400).json({ success: false, error: 'a.r10.toのURLを展開できませんでした。URLを再確認してください' });
         }
       } catch(expandErr) {
         const msg = expandErr.name === 'AbortError'
           ? 'a.r10.toのURL展開がタイムアウトしました。しばらくしてから再度お試しください'
-          : 'a.r10.toのURL展開に失敗しました。しばらくしてから再度お試しください';
+          : 'a.r10.toのURL展開に失敗しました: ' + expandErr.message;
         return res.status(400).json({ success: false, error: msg });
       }
     } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
