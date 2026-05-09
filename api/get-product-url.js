@@ -13,9 +13,9 @@
     const u = new URL(url);
     let itemUrl = url;
 
-    // a.r10.to 短縮URLはHEADリクエストでリダイレクト先を展開
+    // a.r10.to 短縮URLはGETリクエストでリダイレクト先を展開（HEADは非対応サーバーあり）
     if (u.hostname === 'a.r10.to') {
-      const expanded = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+      const expanded = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(8000) });
       itemUrl = expanded.url;
     } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
