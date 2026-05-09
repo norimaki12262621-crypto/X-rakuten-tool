@@ -95,8 +95,7 @@ URL: ${item.url}
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 512,
-            responseMimeType: 'application/json',
+            maxOutputTokens: 1024,
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),
@@ -140,7 +139,6 @@ URL: ${item.url}
       product: item,
       reason: parsed.reason || '',
       postText,
-      _debug: { jsLen: [...postText].length, urlSuffixLen: [...urlSuffix].length, bodyLen: [...body].length },
     });
 
   } catch(err) {
