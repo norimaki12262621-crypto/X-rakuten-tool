@@ -49,17 +49,26 @@ module.exports = async function handler(req, res) {
     const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
     const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
 
+    // TinyURL でアフィリエイトURLを短縮
+    let shortUrl = affUrl;
+    try {
+      const tinyRes = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(affUrl)}`);
+      const tinyText = await tinyRes.text();
+      if (tinyText.trim().startsWith('http')) shortUrl = tinyText.trim();
+    } catch(e) {
+      console.error('URL shortening failed:', e.message);
+    }
+
     const item = {
       name: matched.itemName,
       price: matched.itemPrice,
       reviewCount: matched.reviewCount || 0,
       reviewAverage: matched.reviewAverage || 0,
       shop: matched.shopName,
-      url: affUrl,
+      url: shortUrl,
       image: matched.mediumImageUrls?.[0]?.imageUrl || '',
     };
 
-    // Gemini で投稿文生成（responseMimeType で JSON を強制）
     const prompt = `あなたは楽天市場のアフィリエイターです。以下の商品情報を元に、Xに投稿するバズる文章を生成してください。
 
 商品名: ${item.name}
@@ -68,9 +77,12 @@ module.exports = async function handler(req, res) {
 ショップ: ${item.shop}
 URL: ${item.url}
 
-以下のJSON形式のみで回答してください。postTextには必ず上記のURLをそのまま文中に含めてください（[URL]などのプレースホルダーは使わないこと）:
+以下のJSON形式のみで回答してください。
+- postTextにはURLをそのまま含めること（[URL]などのプレースホルダー禁止）
+- postText全体をURL込みで140文字以内に収めること
+- ハッシュタグは1〜2個まで
 {
-  "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・実際のURLをそのまま記載・ハッシュタグ2〜3個）",
+  "postText": "Xに投稿する文章（URL込み140文字以内、絵文字あり、商品名・価格・魅力・URL・ハッシュタグ1〜2個）",
   "reason": "この商品を選んだ理由（50字以内）"
 }`;
 
@@ -83,7 +95,7 @@ URL: ${item.url}
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 512,
             responseMimeType: 'application/json',
             thinkingConfig: { thinkingBudget: 0 },
           },
@@ -92,26 +104,31 @@ URL: ${item.url}
     );
 
     const geminiData = await geminiRes.json();
-    console.error('[gemini] status:', geminiRes.status);
-    console.error('[gemini] finishReason:', geminiData.candidates?.[0]?.finishReason);
     if (geminiData.error) throw new Error(`Gemini: ${geminiData.error.message}`);
 
-    // gemini-2.5-flash はthinkingモードでparts[0]が思考テキストになるため、thought:trueでないpartを探す
     const parts = geminiData.candidates?.[0]?.content?.parts || [];
     const raw = parts.find(p => !p.thought)?.text || parts[parts.length - 1]?.text || '';
-    console.error('[gemini] parts count:', parts.length, 'raw:', raw.slice(0, 200));
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch(e) {
-      console.error('[gemini] JSON.parse failed:', e.message);
       const m = raw.match(/\{[\s\S]*\}/);
       if (!m) throw new Error('Gemini応答のパースに失敗しました');
       parsed = JSON.parse(m[0]);
     }
 
-    // [URL]プレースホルダーが残っていた場合は実際のアフィリエイトURLで置換
-    const postText = (parsed.postText || '').replace(/\[URL\]/g, item.url);
+    // [URL]プレースホルダーを短縮URLで置換
+    let postText = (parsed.postText || '').replace(/\[URL\]/g, item.url);
+
+    // 140文字超えの場合、本文を切り詰めて短縮URLを末尾に付け直す
+    if ([...postText].length > 140) {
+      const urlPart = '\n' + item.url;
+      const maxBody = 140 - [...urlPart].length;
+      // ハッシュタグより前の本文部分を切り詰める
+      const withoutUrl = postText.replace(item.url, '').trimEnd();
+      const chars = [...withoutUrl];
+      postText = chars.slice(0, maxBody).join('').trimEnd() + urlPart;
+    }
 
     return res.status(200).json({
       success: true,
