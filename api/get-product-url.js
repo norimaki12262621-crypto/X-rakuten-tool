@@ -122,17 +122,12 @@ URL: ${item.url}
       .replace(/\\n/g, '\n')
       .replace(/\[URL\]/g, item.url);
 
-    // URLを末尾に付けた形で常に140文字以内に収める
-    const LIMIT = 140;
+    // 本文＋URL末尾の形式に正規化し、常に140文字以内に収める
     const urlSuffix = '\n' + item.url;
-    const urlSuffixLen = [...urlSuffix].length;
-    const maxBodyLen = LIMIT - urlSuffixLen;
+    const maxBodyLen = 140 - [...urlSuffix].length;
 
-    // 本文からURLを除去（indexOf で位置を特定してslice）
     const urlIdx = postText.indexOf(item.url);
     let body = (urlIdx >= 0 ? postText.slice(0, urlIdx) : postText).trimEnd();
-
-    // 本文が長い場合は切り詰め
     const bodyChars = [...body];
     if (bodyChars.length > maxBodyLen) {
       body = bodyChars.slice(0, maxBodyLen).join('').trimEnd();
