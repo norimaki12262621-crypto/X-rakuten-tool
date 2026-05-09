@@ -8,16 +8,26 @@ module.exports = async function handler(req, res) {
 
   if (!url) return res.status(400).json({ success: false, error: 'URLを指定してください' });
 
-  // 楽天URLからshopCode・itemCodeを抽出
+  // アフィリエイトURL・直接URLの両方に対応してitem.rakuten.co.jpのURLを抽出
   let shopCode, itemCode;
   try {
     const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    if (u.hostname.includes('item.rakuten.co.jp') && parts.length >= 2) {
+    let itemUrl = url;
+
+    // hb.afl.rakuten.co.jp のアフィリエイトURLの場合、pcパラメータから実URLを取得
+    if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
+      const pc = u.searchParams.get('pc');
+      if (!pc) return res.status(400).json({ success: false, error: 'アフィリエイトURLのpcパラメータが見つかりません' });
+      itemUrl = decodeURIComponent(pc);
+    }
+
+    const itemU = new URL(itemUrl);
+    const parts = itemU.pathname.split('/').filter(Boolean);
+    if (itemU.hostname.includes('item.rakuten.co.jp') && parts.length >= 2) {
       shopCode = parts[0];
       itemCode = parts[1];
     } else {
-      return res.status(400).json({ success: false, error: '楽天商品ページのURLを入力してください（例: https://item.rakuten.co.jp/shop/item/）' });
+      return res.status(400).json({ success: false, error: '楽天商品ページのURLを入力してください（例: https://item.rakuten.co.jp/shop/item/ またはアフィリエイトURL）' });
     }
   } catch(e) {
     return res.status(400).json({ success: false, error: '無効なURLです' });
