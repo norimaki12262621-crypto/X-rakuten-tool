@@ -13,20 +13,34 @@
     const u = new URL(url);
     let itemUrl = url;
 
-    // a.r10.to 短縮URLはGETリクエストでリダイレクト先を展開
+    // a.r10.to 短縮URLをGETリクエストでリダイレクト先に展開
     if (u.hostname === 'a.r10.to') {
       try {
-        const expanded = await fetch(url, {
-          redirect: 'follow',
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
-          signal: AbortSignal.timeout(10000),
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        let expanded;
+        try {
+          expanded = await fetch(url, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
         itemUrl = expanded.url;
         if (!itemUrl || new URL(itemUrl).hostname === 'a.r10.to') {
           return res.status(400).json({ success: false, error: 'a.r10.toのURLを展開できませんでした。URLを再確認してください' });
         }
       } catch(expandErr) {
-        return res.status(400).json({ success: false, error: 'a.r10.toのURL展開に失敗しました。しばらくしてから再度お試しください' });
+        const msg = expandErr.name === 'AbortError'
+          ? 'a.r10.toのURL展開がタイムアウトしました。しばらくしてから再度お試しください'
+          : 'a.r10.toのURL展開に失敗しました。しばらくしてから再度お試しください';
+        return res.status(400).json({ success: false, error: msg });
       }
     } else if (u.hostname.includes('hb.afl.rakuten.co.jp')) {
       const pc = u.searchParams.get('pc');
