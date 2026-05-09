@@ -120,15 +120,23 @@ URL: ${item.url}
     // [URL]プレースホルダーを短縮URLで置換
     let postText = (parsed.postText || '').replace(/\[URL\]/g, item.url);
 
-    // 140文字超えの場合、本文を切り詰めて短縮URLを末尾に付け直す
-    if ([...postText].length > 140) {
-      const urlPart = '\n' + item.url;
-      const maxBody = 140 - [...urlPart].length;
-      // ハッシュタグより前の本文部分を切り詰める
-      const withoutUrl = postText.replace(item.url, '').trimEnd();
-      const chars = [...withoutUrl];
-      postText = chars.slice(0, maxBody).join('').trimEnd() + urlPart;
+    // URLを末尾に付けた形で常に140文字以内に収める
+    const LIMIT = 140;
+    const urlSuffix = '\n' + item.url;
+    const urlSuffixLen = [...urlSuffix].length;
+    const maxBodyLen = LIMIT - urlSuffixLen;
+
+    // 本文からURLを除去（indexOf で位置を特定してslice）
+    const urlIdx = postText.indexOf(item.url);
+    let body = (urlIdx >= 0 ? postText.slice(0, urlIdx) : postText).trimEnd();
+
+    // 本文が長い場合は切り詰め
+    const bodyChars = [...body];
+    if (bodyChars.length > maxBodyLen) {
+      body = bodyChars.slice(0, maxBodyLen).join('').trimEnd();
     }
+
+    postText = body + urlSuffix;
 
     return res.status(200).json({
       success: true,
