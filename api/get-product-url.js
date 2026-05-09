@@ -73,10 +73,9 @@ URL: ${item.url}
 以下のJSON形式のみで回答してください。
 - postTextにはURLをそのまま含めること（プレースホルダー禁止）
 - postText全体をURL込みで140文字以内に収めること
-- 絵文字は使わないこと
 - ハッシュタグは1～2個まで
 {
-  "postText": "Xに投稿する文章（URL込み140文字以内、絵文字なし、商品名・価格・魅力・URL・ハッシュタグ1～2個）",
+  "postText": "Xに投稿する文章（URL込み140文字以内、絵文字あり、商品名・価格・魅力・URL・ハッシュタグ1～2個）",
   "reason": "この商品を選んだ理由（50字以内）"
 }`;
 
@@ -111,7 +110,14 @@ URL: ${item.url}
       parsed = JSON.parse(m[0]);
     }
 
-    let postText = (parsed.postText || '').replace(/\\n/g, '\n').replace(/\[URL\]/g, item.url);
+    // 孤立サロゲートを除去: encodeURIComponentは孤立サロゲートでURIErrorを投げる
+    // [...str]でコードポイント単位に分割することで有効な絵文字は保持される
+    const sanitize = (str) => [...str].filter(c => {
+      try { encodeURIComponent(c); return true; } catch(e) { return false; }
+    }).join('');
+
+    let postText = sanitize((parsed.postText || '').replace(/\\n/g, '\n'))
+      .replace(/\[URL\]/g, item.url);
 
     // URLを末尾に付けた形式で常に140文字以内に収める
     const urlSuffix = '\n' + item.url;
