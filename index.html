@@ -248,8 +248,8 @@ async function fetchProduct() {
 
       // Step2: 楽天APIプロキシ経由（get-imageと並列）
       const rakutenParams = new URLSearchParams({
-        keyword: `${shopCode}:${itemCode}`,
-        hits: 10,
+        itemCode: `${shopCode}:${itemCode}`,
+        hits: 1,
         imageFlag: 1,
       });
       const [rakutenRes, imgRes] = await Promise.all([
