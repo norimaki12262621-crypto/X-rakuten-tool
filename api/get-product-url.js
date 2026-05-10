@@ -95,7 +95,7 @@ module.exports = async function handler(req, res) {
       format: 'json',
       imageFlag: 1,
     });
-    rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${rakutenParams}`;
+    rakutenUrl = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${rakutenParams}`;
     const proxyRes = await fetch(
       rakutenUrl,
       { headers: { 'Origin': 'https://x-rakuten-tool.vercel.app', 'Referer': 'https://x-rakuten-tool.vercel.app/' } }
