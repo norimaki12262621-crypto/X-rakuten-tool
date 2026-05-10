@@ -268,7 +268,7 @@ async function fetchProduct() {
       const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
       const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
 
-      const imgSrc = pageImageUrl || matched.mediumImageUrls?.[0]?.imageUrl || '';
+      const imgSrc = pageImageUrl || rakutenData.Items?.[0]?.Item?.mediumImageUrls?.[0]?.imageUrl || '';
       document.getElementById('prod-img').src = imgSrc;
       document.getElementById('prod-img').style.display = imgSrc ? 'block' : 'none';
       document.getElementById('prod-name').textContent = matched.itemName;
