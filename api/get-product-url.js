@@ -85,7 +85,7 @@ module.exports = async function handler(req, res) {
     return json({ success: false, error: '無効なURLです' }, 400);
   }
 
-  let rakutenData;
+  let rakutenData, rakutenUrl;
   try {
     const rakutenParams = new URLSearchParams({
       applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
@@ -95,8 +95,9 @@ module.exports = async function handler(req, res) {
       format: 'json',
       imageFlag: 1,
     });
+    rakutenUrl = `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${rakutenParams}`;
     const proxyRes = await fetch(
-      `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${rakutenParams}`,
+      rakutenUrl,
       { headers: { 'Origin': 'https://x-rakuten-tool.vercel.app', 'Referer': 'https://x-rakuten-tool.vercel.app/' } }
     );
     const rawBody = await proxyRes.text();
@@ -107,7 +108,7 @@ module.exports = async function handler(req, res) {
     rakutenData = JSON.parse(rawBody);
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
-    if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした', shopCode, itemCode, rakutenResponse: rakutenData }, 404);
+    if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした', shopCode, itemCode, rakutenUrl, rakutenResponse: rakutenData }, 404);
 
     const matched = rawItems[0];
 
@@ -201,6 +202,6 @@ URL: ${item.url}
     return json({ success: true, product: item, reason: parsed.reason || '', postText });
   } catch (err) {
     console.error(err);
-    return json({ success: false, error: err.message, shopCode, itemCode, rakutenResponse: rakutenData || null }, 500);
+    return json({ success: false, error: err.message, shopCode, itemCode, rakutenUrl: rakutenUrl || null, rakutenResponse: rakutenData || null }, 500);
   }
 };
