@@ -246,18 +246,17 @@ async function fetchProduct() {
       if (!codeData.success) throw new Error(codeData.error || '取得に失敗しました');
       const { shopCode, itemCode } = codeData;
 
-      // Step2: 楽天API直接呼び出し（get-imageと並列）
+      // Step2: 楽天APIプロキシ経由（get-imageと並列）
       const rakutenParams = new URLSearchParams({
-        applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
-        affiliateId: '534cdfaf.e35a1702.534cdfb0.c0ce9a58',
-        itemCode: `${shopCode}:${itemCode}`,
-        format: 'json',
+        keyword: `${shopCode}:${itemCode}`,
+        hits: 10,
         imageFlag: 1,
       });
       const [rakutenRes, imgRes] = await Promise.all([
-        fetch(`https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${rakutenParams}`),
+        fetch(`/api/rakuten?${rakutenParams}`),
         fetch(`/api/get-image?url=${encodeURIComponent(url)}`),
       ]);
+      if (!rakutenRes.ok) throw new Error(`サーバーエラー (${rakutenRes.status})`);
       const rakutenData = await rakutenRes.json();
       console.log('[rakuten] status:', rakutenRes.status);
       console.log('[rakuten] response:', JSON.stringify(rakutenData));
