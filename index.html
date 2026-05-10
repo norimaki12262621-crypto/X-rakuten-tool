@@ -259,6 +259,8 @@ async function fetchProduct() {
         fetch(`/api/get-image?url=${encodeURIComponent(url)}`),
       ]);
       const rakutenData = await rakutenRes.json();
+      console.log('[rakuten] status:', rakutenRes.status);
+      console.log('[rakuten] response:', JSON.stringify(rakutenData));
       const pageImageUrl = await imgRes.json().then(d => d.imageUrl || '').catch(() => '');
 
       const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
