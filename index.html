@@ -226,8 +226,6 @@ async function fetchProduct() {
   errEl.classList.remove('on');
 
   try {
-    let res;
-    let pageImageUrl = '';
     if (currentTab === 'url') {
       const url = document.getElementById('product-url').value.trim();
       if (!url) throw new Error('URLを入力してください');
@@ -241,32 +239,63 @@ async function fetchProduct() {
         if (urlErr.message.includes('rakuten')) throw urlErr;
         throw new Error('有効なURLを入力してください');
       }
-      const [mainRes, imgRes] = await Promise.all([
-        fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`),
+
+      // Step1: URL解析 → shopCode + itemCode
+      const codeRes = await fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`);
+      const codeData = await codeRes.json();
+      if (!codeData.success) throw new Error(codeData.error || '取得に失敗しました');
+      const { shopCode, itemCode } = codeData;
+
+      // Step2: 楽天API直接呼び出し（get-imageと並列）
+      const rakutenParams = new URLSearchParams({
+        applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
+        affiliateId: '534cdfaf.e35a1702.534cdfb0.c0ce9a58',
+        itemCode: `${shopCode}:${itemCode}`,
+        format: 'json',
+        imageFlag: 1,
+      });
+      const [rakutenRes, imgRes] = await Promise.all([
+        fetch(`https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601?${rakutenParams}`),
         fetch(`/api/get-image?url=${encodeURIComponent(url)}`),
       ]);
-      res = mainRes;
-      pageImageUrl = await imgRes.json().then(d => d.imageUrl || '').catch(() => '');
+      const rakutenData = await rakutenRes.json();
+      const pageImageUrl = await imgRes.json().then(d => d.imageUrl || '').catch(() => '');
+
+      const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
+      if (!rawItems.length) throw new Error('商品が見つかりませんでした');
+      const matched = rawItems[0];
+
+      const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
+      const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
+
+      const imgSrc = pageImageUrl || matched.mediumImageUrls?.[0]?.imageUrl || '';
+      document.getElementById('prod-img').src = imgSrc;
+      document.getElementById('prod-img').style.display = imgSrc ? 'block' : 'none';
+      document.getElementById('prod-name').textContent = matched.itemName;
+      document.getElementById('prod-price').textContent = `¥${Number(matched.itemPrice).toLocaleString()}`;
+      document.getElementById('prod-shop').textContent = matched.shopName || '';
+      document.getElementById('prod-reason').textContent = '';
+      document.getElementById('post-text').value = affUrl;
+      document.getElementById('result').style.display = 'block';
+      updateCount();
     } else {
       const genre = document.getElementById('genre').value;
       const maxPrice = document.getElementById('max-price').value;
-      res = await fetch(`/api/get-product?genre=${encodeURIComponent(genre)}&maxPrice=${maxPrice}`);
+      const res = await fetch(`/api/get-product?genre=${encodeURIComponent(genre)}&maxPrice=${maxPrice}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || '取得に失敗しました');
+      const p = data.product;
+      const imgSrc = p.image || '';
+      document.getElementById('prod-img').src = imgSrc;
+      document.getElementById('prod-img').style.display = imgSrc ? 'block' : 'none';
+      document.getElementById('prod-name').textContent = p.name;
+      document.getElementById('prod-price').textContent = `¥${Number(p.price).toLocaleString()}`;
+      document.getElementById('prod-shop').textContent = p.shop || '';
+      document.getElementById('prod-reason').textContent = data.reason ? '💡 ' + data.reason : '';
+      document.getElementById('post-text').value = data.postText;
+      document.getElementById('result').style.display = 'block';
+      updateCount();
     }
-
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || '取得に失敗しました');
-
-    const p = data.product;
-    const imgSrc = pageImageUrl || p.image || '';
-    document.getElementById('prod-img').src = imgSrc;
-    document.getElementById('prod-img').style.display = imgSrc ? 'block' : 'none';
-    document.getElementById('prod-name').textContent = p.name;
-    document.getElementById('prod-price').textContent = `¥${Number(p.price).toLocaleString()}`;
-    document.getElementById('prod-shop').textContent = p.shop || '';
-    document.getElementById('prod-reason').textContent = data.reason ? '💡 ' + data.reason : '';
-    document.getElementById('post-text').value = data.postText;
-    document.getElementById('result').style.display = 'block';
-    updateCount();
   } catch(e) {
     errEl.textContent = '⚠️ ' + e.message;
     errEl.classList.add('on');
