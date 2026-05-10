@@ -227,6 +227,7 @@ async function fetchProduct() {
 
   try {
     let res;
+    let pageImageUrl = '';
     if (currentTab === 'url') {
       const url = document.getElementById('product-url').value.trim();
       if (!url) throw new Error('URLを入力してください');
@@ -240,7 +241,12 @@ async function fetchProduct() {
         if (urlErr.message.includes('rakuten')) throw urlErr;
         throw new Error('有効なURLを入力してください');
       }
-      res = await fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`);
+      const [mainRes, imgRes] = await Promise.all([
+        fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`),
+        fetch(`/api/get-image?url=${encodeURIComponent(url)}`),
+      ]);
+      res = mainRes;
+      pageImageUrl = await imgRes.json().then(d => d.imageUrl || '').catch(() => '');
     } else {
       const genre = document.getElementById('genre').value;
       const maxPrice = document.getElementById('max-price').value;
@@ -251,8 +257,9 @@ async function fetchProduct() {
     if (!data.success) throw new Error(data.error || '取得に失敗しました');
 
     const p = data.product;
-    document.getElementById('prod-img').src = p.image || '';
-    document.getElementById('prod-img').style.display = p.image ? 'block' : 'none';
+    const imgSrc = pageImageUrl || p.image || '';
+    document.getElementById('prod-img').src = imgSrc;
+    document.getElementById('prod-img').style.display = imgSrc ? 'block' : 'none';
     document.getElementById('prod-name').textContent = p.name;
     document.getElementById('prod-price').textContent = `¥${Number(p.price).toLocaleString()}`;
     document.getElementById('prod-shop').textContent = p.shop || '';
