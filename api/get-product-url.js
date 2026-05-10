@@ -102,6 +102,9 @@ export default async function handler(request) {
       { headers: { 'Origin': 'https://x-rakuten-tool.vercel.app', 'Referer': 'https://x-rakuten-tool.vercel.app/' } }
     );
     const rakutenData = await proxyRes.json();
+    console.log('[get-product-url] shopCode:', shopCode);
+    console.log('[get-product-url] itemCode:', itemCode);
+    console.log('[get-product-url] rakutenData:', JSON.stringify(rakutenData));
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
     if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした' }, 404);
