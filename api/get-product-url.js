@@ -76,6 +76,8 @@ module.exports = async function handler(req, res) {
     if (itemU.hostname.includes('item.rakuten.co.jp') && parts.length >= 2) {
       shopCode = parts[0];
       itemCode = parts[1];
+      console.log('[get-product-url] shopCode:', shopCode);
+      console.log('[get-product-url] itemCode:', itemCode);
     } else {
       return json({ success: false, error: '楽天商品ページのURLを入力してください' }, 400);
     }
