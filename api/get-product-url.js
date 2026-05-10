@@ -107,7 +107,7 @@ module.exports = async function handler(req, res) {
     rakutenData = JSON.parse(rawBody);
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
-    if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした', rakutenResponse: rakutenData }, 404);
+    if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした', shopCode, itemCode, rakutenResponse: rakutenData }, 404);
 
     const matched = rawItems[0];
 
@@ -201,6 +201,6 @@ URL: ${item.url}
     return json({ success: true, product: item, reason: parsed.reason || '', postText });
   } catch (err) {
     console.error(err);
-    return json({ success: false, error: err.message, rakutenResponse: rakutenData || null }, 500);
+    return json({ success: false, error: err.message, shopCode, itemCode, rakutenResponse: rakutenData || null }, 500);
   }
 };
