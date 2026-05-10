@@ -96,10 +96,12 @@ module.exports = async function handler(req, res) {
       `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${rakutenParams}`,
       { headers: { 'Origin': 'https://x-rakuten-tool.vercel.app', 'Referer': 'https://x-rakuten-tool.vercel.app/' } }
     );
-    const rakutenData = await proxyRes.json();
+    const rawBody = await proxyRes.text();
     console.log('[get-product-url] shopCode:', shopCode);
     console.log('[get-product-url] itemCode:', itemCode);
-    console.log('[get-product-url] rakutenData:', JSON.stringify(rakutenData));
+    console.log('[get-product-url] rakuten status:', proxyRes.status);
+    console.log('[get-product-url] rakuten body:', rawBody);
+    const rakutenData = JSON.parse(rawBody);
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
     if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした' }, 404);
