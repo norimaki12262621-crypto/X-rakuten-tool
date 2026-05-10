@@ -91,7 +91,7 @@ module.exports = async function handler(req, res) {
       applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
       accessKey: 'pk_utmSC6YohMKR5EE6CDCiuC06NbdYwptCTfGFsk3LZhd',
       affiliateId: '534cdfaf.e35a1702.534cdfb0.c0ce9a58',
-      itemCode: itemCode,
+      itemCode: `${shopCode}:${itemCode}`,
       format: 'json',
       imageFlag: 1,
     });
