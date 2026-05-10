@@ -1,5 +1,3 @@
-export const config = { runtime: 'edge' };
-
 async function followRedirects(startUrl, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -30,19 +28,16 @@ async function followRedirects(startUrl, timeoutMs = 15000) {
   }
 }
 
-export default async function handler(request) {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Content-Type': 'application/json',
-  };
-  const json = (data, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: corsHeaders });
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Content-Type', 'application/json');
 
-  if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
+  const json = (data, status = 200) => res.status(status).json(data);
 
-  const { searchParams } = new URL(request.url);
-  const url = searchParams.get('url');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const url = req.query.url;
   const geminiKey = process.env.GEMINI_API_KEY;
 
   if (!url) return json({ success: false, error: 'URLを指定してください' }, 400);
@@ -203,4 +198,4 @@ URL: ${item.url}
     console.error(err);
     return json({ success: false, error: err.message }, 500);
   }
-}
+};
