@@ -89,15 +89,24 @@ export default async function handler(request) {
   }
 
   try {
-    const keyword = itemCode.replace(/[-_]/g, ' ').substring(0, 30);
-    const proxyParams = new URLSearchParams({ keyword, hits: 20, sort: '-reviewCount' });
-    const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
+    const rakutenParams = new URLSearchParams({
+      applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
+      accessKey: 'pk_utmSC6YohMKR5EE6CDCiuC06NbdYwptCTfGFsk3LZhd',
+      affiliateId: '534cdfaf.e35a1702.534cdfb0.c0ce9a58',
+      itemCode: `${shopCode}:${itemCode}`,
+      format: 'json',
+      imageFlag: 1,
+    });
+    const proxyRes = await fetch(
+      `https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601?${rakutenParams}`,
+      { headers: { 'Origin': 'https://x-rakuten-tool.vercel.app', 'Referer': 'https://x-rakuten-tool.vercel.app/' } }
+    );
     const rakutenData = await proxyRes.json();
 
     const rawItems = (rakutenData.Items || []).map(i => i.Item || i);
     if (!rawItems.length) return json({ success: false, error: '商品が見つかりませんでした' }, 404);
 
-    const matched = rawItems.find(i => i.shopCode === shopCode) || rawItems[0];
+    const matched = rawItems[0];
 
     const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
     const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
