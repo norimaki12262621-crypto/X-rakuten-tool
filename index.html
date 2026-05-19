@@ -49,15 +49,40 @@
   #char-count.over { color: red; }
   .btn-post { display: block; width: 100%; background: #000; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; }
   .btn-post:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-buffer { display: block; width: 100%; background: #168BBF; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+  .btn-buffer:disabled { opacity: 0.45; cursor: not-allowed; }
   #msg { margin-top: 10px; font-size: 13px; }
+  #buffer-msg { margin-top: 6px; font-size: 13px; }
   .err-msg { background: #fee; border: 1px solid #f5c6c6; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #b00; margin-top: 12px; display: none; }
   .err-msg.on { display: block; }
+  .buffer-settings { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; }
+  .buffer-settings summary { font-size: 13px; font-weight: bold; color: #555; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+  .buffer-settings summary::-webkit-details-marker { display: none; }
+  .buffer-settings summary::before { content: '▶'; font-size: 10px; transition: transform 0.15s; }
+  .buffer-settings[open] summary::before { transform: rotate(90deg); }
+  .buffer-token-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-save-token { padding: 9px 14px; background: #168BBF; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; white-space: nowrap; }
+  .btn-save-token:hover { background: #1279a8; }
+  .token-hint { font-size: 11px; color: #aaa; margin-top: 6px; }
+  .token-saved { font-size: 12px; color: #168BBF; margin-top: 6px; display: none; }
 </style>
 </head>
 <body>
 
 <h1>𝕏 × 楽天 自動投稿ツール</h1>
 <div class="subtitle">楽天商品をAIが分析 → Xに自動投稿</div>
+
+<details class="buffer-settings" id="buffer-settings-panel">
+  <summary>⚙ Buffer設定</summary>
+  <div>
+    <div class="buffer-token-row">
+      <input type="password" id="buffer-token" class="url-input" placeholder="Buffer Access Token" autocomplete="off" />
+      <button class="btn-save-token" onclick="saveBufferToken()">保存</button>
+    </div>
+    <div class="token-hint">Buffer → Settings → Apps → Access Token から取得できます</div>
+    <div class="token-saved" id="token-saved">✅ 保存しました</div>
+  </div>
+</details>
 
 <div class="input-section">
   <div class="tabs">
@@ -194,11 +219,69 @@
   <textarea id="post-text" oninput="updateCount()"></textarea>
   <div id="char-count">0 / 280</div>
   <button class="btn-post" id="post-btn" onclick="postToX()">𝕏 に投稿する</button>
+  <button class="btn-buffer" id="buffer-btn" onclick="addToBuffer()">Buffer に追加</button>
   <div id="msg"></div>
+  <div id="buffer-msg"></div>
 </div>
 
 <script>
 let currentTab = 'url';
+
+// Buffer token persistence
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('buffer_access_token');
+  if (saved) {
+    document.getElementById('buffer-token').value = saved;
+  }
+});
+
+function saveBufferToken() {
+  const token = document.getElementById('buffer-token').value.trim();
+  if (token) {
+    localStorage.setItem('buffer_access_token', token);
+  } else {
+    localStorage.removeItem('buffer_access_token');
+  }
+  const el = document.getElementById('token-saved');
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+
+async function addToBuffer() {
+  const btn = document.getElementById('buffer-btn');
+  const msg = document.getElementById('buffer-msg');
+  const text = document.getElementById('post-text').value;
+  const token = localStorage.getItem('buffer_access_token') || document.getElementById('buffer-token').value.trim();
+
+  if (!token) {
+    msg.innerHTML = '<span style="color:#b00">❌ Buffer Access Tokenを設定してください（⚙ Buffer設定を開いて保存）</span>';
+    document.getElementById('buffer-settings-panel').open = true;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '追加中...';
+  msg.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/buffer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, access_token: token }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.innerHTML = `<span style="color:#168BBF">✅ Bufferに追加しました（${data.services || data.profiles + '件'}）</span>`;
+    } else {
+      msg.innerHTML = `<span style="color:#b00">❌ ${data.error}</span>`;
+    }
+  } catch (e) {
+    msg.innerHTML = `<span style="color:#b00">❌ 通信エラー: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Buffer に追加';
+  }
+}
 
 function selectGenre(el, value) {
   document.querySelectorAll('.preset-chip').forEach(b => b.classList.remove('active'));
