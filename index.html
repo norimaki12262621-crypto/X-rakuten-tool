@@ -350,7 +350,7 @@ async function fetchProduct() {
       const matched = rawItems[0];
 
       // affiliateUrl があればそれを、なければ itemUrl（rafcid 付き）を使用
-      const affUrl = matched.affiliateUrl || matched.itemUrl;
+      const rawAffUrl = matched.affiliateUrl || matched.itemUrl;
 
       const imgSrc = pageImageUrl || rakutenData.Items?.[0]?.Item?.mediumImageUrls?.[0]?.imageUrl || '';
       document.getElementById('prod-img').src = imgSrc;
@@ -360,10 +360,20 @@ async function fetchProduct() {
       document.getElementById('prod-shop').textContent = matched.shopName || '';
       document.getElementById('prod-reason').textContent = matched.catchcopy ? '💡 ' + matched.catchcopy.slice(0, 80) : '';
 
-      // Gemini で 140 字投稿文を生成
+      // URL 短縮 → 投稿文生成
       document.getElementById('post-text').value = '投稿文を生成中...';
       updateCount();
       document.getElementById('result').style.display = 'block';
+
+      // Step1: URL 短縮
+      let affUrl = rawAffUrl;
+      try {
+        const shrRes = await fetch(`/api/shorten-url?url=${encodeURIComponent(rawAffUrl)}`);
+        const shrData = await shrRes.json();
+        if (shrData.shortUrl) affUrl = shrData.shortUrl;
+      } catch {}
+
+      // Step2: Gemini で 140 字投稿文を生成
       try {
         const postRes = await fetch('/api/generate-post', {
           method: 'POST',

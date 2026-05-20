@@ -27,7 +27,7 @@ module.exports = async function handler(req, res) {
       reviewCount: Item.reviewCount || 0,
       reviewAverage: Item.reviewAverage || 0,
       shop: Item.shopName,
-      url: Item.itemUrl,
+      url: Item.affiliateUrl || Item.itemUrl,
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
 
@@ -61,11 +61,29 @@ ${JSON.stringify(items, null, 2)}
     const parsed = JSON.parse(jsonMatch[0]);
     const selected = items[parsed.selectedIndex] || items[0];
 
+    // URL 短縮（RAKUTEN_APP_ID あれば a.r10.to、なければ TinyURL）
+    let shortUrl = selected.url;
+    try {
+      const rakutenAppId = process.env.RAKUTEN_APP_ID;
+      if (rakutenAppId) {
+        const r = await fetch(
+          `https://app.rakuten.co.jp/services/api/ShortUrl/Create/20200122?applicationId=${rakutenAppId}&url=${encodeURIComponent(selected.url)}`
+        );
+        if (r.ok) shortUrl = (await r.json())?.shortUrl || shortUrl;
+      } else {
+        const r = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(selected.url)}`);
+        if (r.ok) { const t = (await r.text()).trim(); if (t.startsWith('https://')) shortUrl = t; }
+      }
+    } catch {}
+
+    // postText 内の URL を短縮済み URL に置換
+    const postText = (parsed.postText || '').replace(/https?:\/\/\S+/g, shortUrl);
+
     return res.status(200).json({
       success: true,
-      product: selected,
+      product: { ...selected, url: shortUrl },
       reason: parsed.reason,
-      postText: parsed.postText,
+      postText,
     });
 
   } catch (err) {
