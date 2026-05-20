@@ -50,8 +50,9 @@ module.exports = async function handler(req, res) {
       }
     );
     const data = await r.json();
+    console.log('[generate-post] gemini status:', r.status, 'data:', JSON.stringify(data).slice(0, 500));
     let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!raw) throw new Error('Gemini応答が空です');
+    if (!raw) throw new Error('Gemini応答が空です: ' + JSON.stringify(data).slice(0, 300));
 
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
