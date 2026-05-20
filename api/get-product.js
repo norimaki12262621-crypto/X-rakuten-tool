@@ -40,7 +40,7 @@ ${JSON.stringify(items, null, 2)}
 {
   "selectedIndex": 選んだ商品のインデックス番号(0始まり),
   "reason": "選んだ理由（日本語で50字以内）",
-  "postText": "Xに投稿する文章（URLより前の本文116字以内＋改行＋URL1つで合計140字以内、絵文字あり、商品名・価格・おすすめポイント・ハッシュタグ1〜2個）"
+  "postText": "【必ず2行のみ】1行目:絵文字1〜2個＋思わず目が止まるキャッチコピー(40字以内)／2行目:商品の魅力と価格を自然な文章で(65字以内)。URLもハッシュタグも含めない。"
 }`;
 
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`, {
@@ -76,8 +76,27 @@ ${JSON.stringify(items, null, 2)}
       }
     } catch {}
 
-    // postText 内の URL を短縮済み URL に置換
-    const postText = (parsed.postText || '').replace(/https?:\/\/\S+/g, shortUrl);
+    // postText を2行に正規化してURLを3行目に結合
+    let body = (parsed.postText || '').replace(/https?:\/\/\S+/g, '').trim();
+    const ls = body.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    body = ls.slice(0, 2).join('\n');
+    let postText = `${body}\n${shortUrl}`;
+
+    // Twitter 換算 140 字保証（URL = 23 字換算）
+    const twitterCount = (text) => {
+      const urls = text.match(/https?:\/\/\S+/g) || [];
+      const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
+      return [...text].length - urlActual + urls.length * 23;
+    };
+    for (const idx of [1, 0]) {
+      while (twitterCount(postText) > 140) {
+        const parts = body.split('\n');
+        if (!parts[idx] || [...parts[idx]].length === 0) break;
+        parts[idx] = [...parts[idx]].slice(0, -1).join('');
+        body = parts.join('\n');
+        postText = `${body}\n${shortUrl}`;
+      }
+    }
 
     return res.status(200).json({
       success: true,
