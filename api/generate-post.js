@@ -15,6 +15,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { name, price, catchcopy, url } = req.body;
+  console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
 
