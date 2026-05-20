@@ -51,6 +51,9 @@
   .btn-post:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn-buffer { display: block; width: 100%; background: #168BBF; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-top: 8px; }
   .btn-buffer:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-copy { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; background: #f5f5f5; color: #333; border: 1px solid #ddd; padding: 9px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; margin-top: 4px; transition: background 0.15s; }
+  .btn-copy:hover { background: #e8e8e8; }
+  .btn-copy.copied { background: #e6f4ea; border-color: #81c784; color: #2e7d32; }
   #msg { margin-top: 10px; font-size: 13px; }
   #buffer-msg { margin-top: 6px; font-size: 13px; }
   .err-msg { background: #fee; border: 1px solid #f5c6c6; border-radius: 6px; padding: 10px 12px; font-size: 13px; color: #b00; margin-top: 12px; display: none; }
@@ -218,6 +221,7 @@
   <div class="result-label">投稿テキスト（編集可能）</div>
   <textarea id="post-text" oninput="updateCount()"></textarea>
   <div id="char-count">0 / 280</div>
+  <button class="btn-copy" id="copy-btn" onclick="copyPostText()">📋 コピー</button>
   <button class="btn-post" id="post-btn" onclick="postToX()">𝕏 に投稿する</button>
   <button class="btn-buffer" id="buffer-btn" onclick="addToBuffer()">Buffer に追加</button>
   <div id="msg"></div>
@@ -234,6 +238,31 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('buffer-token').value = saved;
   }
 });
+
+async function copyPostText() {
+  const text = document.getElementById('post-text').value;
+  const btn = document.getElementById('copy-btn');
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = '✅ コピーしました！';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 コピー';
+      btn.classList.remove('copied');
+    }, 2000);
+  } catch {
+    // フォールバック（古いブラウザ対応）
+    const ta = document.getElementById('post-text');
+    ta.select();
+    document.execCommand('copy');
+    btn.textContent = '✅ コピーしました！';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 コピー';
+      btn.classList.remove('copied');
+    }, 2000);
+  }
+}
 
 function saveBufferToken() {
   const token = document.getElementById('buffer-token').value.trim();
