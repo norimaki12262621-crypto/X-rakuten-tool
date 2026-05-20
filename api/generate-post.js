@@ -1,4 +1,10 @@
-// api/generate-post.js  —  Gemini で投稿本文を生成し、サーバー側で 140 字以内に保証する
+// api/generate-post.js
+// 投稿フォーマット:
+//   1行目: 絵文字 + キャッチコピー（サムネで目を引く一言）
+//   2行目: 商品の魅力・価格
+//   3行目: 短縮URL（サーバー側で結合）
+// Twitter 換算 140 字以内をサーバー側で保証
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -11,22 +17,23 @@ module.exports = async function handler(req, res) {
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
 
-  // Gemini には本文のみ生成させる（URL は含めない）
-  // URL は後でサーバー側で結合し、140 字を保証する
-  const prompt = `楽天商品のX投稿本文を作成してください（URLは含めない）。
+  const prompt = `楽天商品のX投稿文を【必ず2行だけ】生成してください。URLは含めない。
 
 商品名: ${name}
 価格: ¥${Number(price).toLocaleString()}
 キャッチコピー: ${catchcopy || '（なし）'}
 
-条件:
-- 100文字以内で収める
-- 商品名（大幅に短縮可）・価格・おすすめポイントを含める
-- 絵文字を適度に使う
-- ハッシュタグ1〜2個を末尾に入れる
-- URLは絶対に含めない
+【出力フォーマット（厳守）】
+1行目: 絵文字1〜2個＋思わず目が止まる短いキャッチコピー（40文字以内）
+2行目: 商品の魅力と価格を自然な文章で（65文字以内）
 
-本文のみ回答。余計な説明不要。`;
+【禁止事項】
+- 3行以上にしない
+- URLを含めない
+- ハッシュタグを含めない
+- 「1行目:」「2行目:」などのラベルを付けない
+
+2行のみ出力してください。`;
 
   try {
     const r = await fetch(
@@ -36,31 +43,42 @@ module.exports = async function handler(req, res) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 200 },
+          generationConfig: { temperature: 0.8, maxOutputTokens: 150 },
         }),
       }
     );
     const data = await r.json();
-    let body = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!body) throw new Error('Gemini応答が空です');
+    let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    if (!raw) throw new Error('Gemini応答が空です');
 
-    // Gemini が URL を含んでしまった場合は除去
-    body = body.replace(/https?:\/\/\S+/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    // URLが混入していたら除去
+    raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
-    // URL を末尾に結合
+    // 2行に正規化（余分な空行・3行以上を除去）
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    const line1 = lines[0] || '';
+    const line2 = lines[1] || '';
+    let body = line2 ? `${line1}\n${line2}` : line1;
+
+    // 3行目にURLを結合
     let postText = `${body}\n${url}`;
 
-    // Twitter 換算文字数カウント（URL = 23 字）
+    // Twitter 換算文字数（URL = 23 字換算）
     const twitterCount = (text) => {
       const urls = text.match(/https?:\/\/\S+/g) || [];
       const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
       return [...text].length - urlActual + urls.length * 23;
     };
 
-    // 140 字超えなら本文を 1 字ずつ削って調整
-    while (twitterCount(postText) > 140 && [...body].length > 0) {
-      body = [...body].slice(0, -1).join('');
-      postText = `${body.trimEnd()}\n${url}`;
+    // 140 字超えなら2行目から削る → それでも超えなら1行目も削る
+    for (const targetLine of [1, 0]) {
+      while (twitterCount(postText) > 140) {
+        const ls = body.split('\n');
+        if ([...ls[targetLine]].length === 0) break;
+        ls[targetLine] = [...ls[targetLine]].slice(0, -1).join('');
+        body = ls.join('\n');
+        postText = `${body}\n${url}`;
+      }
     }
 
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
