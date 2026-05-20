@@ -349,8 +349,8 @@ async function fetchProduct() {
       if (!rawItems.length) throw new Error('商品が見つかりませんでした');
       const matched = rawItems[0];
 
-      const affiliateId = '534cdfaf.e35a1702.534cdfb0.c0ce9a58';
-      const affUrl = `https://hb.afl.rakuten.co.jp/hgc/${affiliateId}/?pc=${encodeURIComponent(matched.itemUrl)}&m=${encodeURIComponent(matched.itemUrl)}`;
+      // affiliateUrl があればそれを、なければ itemUrl（rafcid 付き）を使用
+      const affUrl = matched.affiliateUrl || matched.itemUrl;
 
       const imgSrc = pageImageUrl || rakutenData.Items?.[0]?.Item?.mediumImageUrls?.[0]?.imageUrl || '';
       document.getElementById('prod-img').src = imgSrc;
@@ -358,9 +358,30 @@ async function fetchProduct() {
       document.getElementById('prod-name').textContent = matched.itemName;
       document.getElementById('prod-price').textContent = `¥${Number(matched.itemPrice).toLocaleString()}`;
       document.getElementById('prod-shop').textContent = matched.shopName || '';
-      document.getElementById('prod-reason').textContent = '';
-      document.getElementById('post-text').value = affUrl;
+      document.getElementById('prod-reason').textContent = matched.catchcopy ? '💡 ' + matched.catchcopy.slice(0, 80) : '';
+
+      // Gemini で 140 字投稿文を生成
+      document.getElementById('post-text').value = '投稿文を生成中...';
+      updateCount();
       document.getElementById('result').style.display = 'block';
+      try {
+        const postRes = await fetch('/api/generate-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: matched.itemName,
+            price: matched.itemPrice,
+            catchcopy: matched.catchcopy || '',
+            url: affUrl,
+          }),
+        });
+        const postData = await postRes.json();
+        document.getElementById('post-text').value = postData.postText ||
+          `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
+      } catch {
+        document.getElementById('post-text').value =
+          `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
+      }
       updateCount();
     } else {
       const genre = document.getElementById('genre').value;
@@ -391,18 +412,25 @@ async function fetchProduct() {
 
 function updateCount() {
   const text = document.getElementById('post-text').value;
-  const count = [...text].length;
+  // Twitter は URL を 23 文字換算
+  const urlMatch = text.match(/https?:\/\/\S+/g) || [];
+  const urlActualLen = urlMatch.reduce((s, u) => s + [...u].length, 0);
+  const urlTwitterLen = urlMatch.length * 23;
+  const count = [...text].length - urlActualLen + urlTwitterLen;
   const el = document.getElementById('char-count');
-  el.textContent = `${count} / 280`;
-  el.className = count > 280 ? 'over' : '';
+  el.textContent = `${count} / 140`;
+  el.className = count > 140 ? 'over' : '';
 }
 
 async function postToX() {
   const btn = document.getElementById('post-btn');
   const msg = document.getElementById('msg');
   const text = document.getElementById('post-text').value;
-  if ([...text].length > 280) {
-    msg.innerHTML = '<span style="color:red">❌ 280字を超えています</span>';
+  const urlMatch = text.match(/https?:\/\/\S+/g) || [];
+  const urlActualLen = urlMatch.reduce((s, u) => s + [...u].length, 0);
+  const twitterCount = [...text].length - urlActualLen + urlMatch.length * 23;
+  if (twitterCount > 140) {
+    msg.innerHTML = '<span style="color:red">❌ 140字を超えています</span>';
     return;
   }
   btn.disabled = true;

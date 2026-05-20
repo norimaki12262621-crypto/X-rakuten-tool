@@ -40,7 +40,7 @@ ${JSON.stringify(items, null, 2)}
 {
   "selectedIndex": 選んだ商品のインデックス番号(0始まり),
   "reason": "選んだ理由（日本語で50字以内）",
-  "postText": "Xに投稿する文章（280字以内、絵文字あり、商品名・価格・魅力・URLを含む、ハッシュタグ2〜3個）"
+  "postText": "Xに投稿する文章（URLより前の本文116字以内＋改行＋URL1つで合計140字以内、絵文字あり、商品名・価格・おすすめポイント・ハッシュタグ1〜2個）"
 }`;
 
     const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`, {
