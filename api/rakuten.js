@@ -3,11 +3,22 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   const { keyword, minPrice, maxPrice, sort, hits, itemCode } = req.query;
 
+  // URL由来のitemCodeはshopCode:urlSlug形式だが、楽天APIの内部itemCodeとは別物。
+  // urlSlug部分をキーワード検索すると正確に一致する。
+  let searchKey;
+  if (itemCode) {
+    const slug = itemCode.includes(':') ? itemCode.split(':')[1] : itemCode;
+    searchKey = { keyword: slug };
+    console.log('[rakuten] itemCode→keyword fallback:', slug);
+  } else {
+    searchKey = { keyword: keyword || '' };
+  }
+
   const params = new URLSearchParams({
     applicationId: '9a9bb16b-a393-414a-ad63-ea58ecf01daa',
     accessKey: 'pk_utmSC6YohMKR5EE6CDCiuC06NbdYwptCTfGFsk3LZhd',
     affiliateId: '534cdfaf.e35a1702.534cdfb0.c0ce9a58',
-    ...(itemCode ? { itemCode } : { keyword: keyword || '' }),
+    ...searchKey,
     hits: hits || 30,
     minPrice: minPrice || 1,
     maxPrice: maxPrice || 999999,
