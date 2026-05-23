@@ -75,7 +75,7 @@ module.exports = async function handler(req, res) {
   // 【】内のSEOワード・重複ワードを除去して自然な商品名に整形
   const name = dedupeProductName(rawName || '');
   const description = (rawDescription || '').replace(/[\r\n]+/g, ' ').slice(0, 100);
-  console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, url }));
+  console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, description, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
 
