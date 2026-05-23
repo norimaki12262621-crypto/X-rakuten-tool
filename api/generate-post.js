@@ -5,6 +5,44 @@
 //   3行目: 短縮URL（サーバー側で結合）
 // Twitter 換算 140 字以内をサーバー側で保証
 
+// Twitter 換算文字数（URL = 23 字換算）
+function twitterCount(text) {
+  const urls = text.match(/https?:\/\/\S+/g) || [];
+  const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
+  return [...text].length - urlActual + urls.length * 23;
+}
+
+// 140 字超えなら2行目から削る → それでも超えなら1行目も削る
+function trimTo140(body, url) {
+  let postText = `${body}\n${url}`;
+  for (const targetLine of [1, 0]) {
+    while (twitterCount(postText) > 140) {
+      const ls = body.split('\n');
+      if (!ls[targetLine] || [...ls[targetLine]].length === 0) break;
+      ls[targetLine] = [...ls[targetLine]].slice(0, -1).join('');
+      body = ls.join('\n');
+      postText = `${body}\n${url}`;
+    }
+  }
+  return postText;
+}
+
+// Gemini が使えない場合のフォールバック投稿文生成
+function fallbackPost(name, price, catchcopy) {
+  const hooks = [
+    'これ知らないと損すぎる😱',
+    'え、まだ買ってないの？🔥',
+    '買わなきゃ後悔する神アイテム✨',
+    'スクロール止めて見て🙌',
+    'コスパおかしすぎる件🫢',
+  ];
+  const line1 = hooks[Math.floor(Math.random() * hooks.length)];
+  const priceStr = `¥${Number(price).toLocaleString()}`;
+  const desc = catchcopy ? catchcopy.slice(0, 40) : name.slice(0, 30);
+  const line2 = `${priceStr}／${desc}`;
+  return `${line1}\n${line2}`;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -53,42 +91,25 @@ module.exports = async function handler(req, res) {
       }
     );
     const data = await r.json();
-    if (data.error) throw new Error(`Gemini APIエラー(${data.error.code}): ${data.error.message?.slice(0, 100)}`);
+    if (data.error) throw new Error(`Gemini APIエラー(${data.error.code})`);
     let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!raw) throw new Error('Gemini応答が空です');
+    if (!raw) throw new Error('Gemini応答が空');
 
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
-    // 2行に正規化（余分な空行・3行以上を除去）
+    // 2行に正規化
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const line1 = lines[0] || '';
-    const line2 = lines[1] || '';
-    let body = line2 ? `${line1}\n${line2}` : line1;
+    let body = lines[1] ? `${lines[0]}\n${lines[1]}` : lines[0];
 
-    // 3行目にURLを結合
-    let postText = `${body}\n${url}`;
-
-    // Twitter 換算文字数（URL = 23 字換算）
-    const twitterCount = (text) => {
-      const urls = text.match(/https?:\/\/\S+/g) || [];
-      const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
-      return [...text].length - urlActual + urls.length * 23;
-    };
-
-    // 140 字超えなら2行目から削る → それでも超えなら1行目も削る
-    for (const targetLine of [1, 0]) {
-      while (twitterCount(postText) > 140) {
-        const ls = body.split('\n');
-        if ([...ls[targetLine]].length === 0) break;
-        ls[targetLine] = [...ls[targetLine]].slice(0, -1).join('');
-        body = ls.join('\n');
-        postText = `${body}\n${url}`;
-      }
-    }
-
+    const postText = trimTo140(body, url);
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
+
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    // Gemini失敗時はフォールバックテキストで応答（ツールを止めない）
+    console.log('[generate-post] Gemini failed, using fallback:', err.message);
+    const body = fallbackPost(name, price, catchcopy);
+    const postText = trimTo140(body, url);
+    return res.status(200).json({ success: true, postText, charCount: twitterCount(postText), fallback: true });
   }
 };
