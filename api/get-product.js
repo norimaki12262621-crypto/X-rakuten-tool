@@ -6,7 +6,6 @@ module.exports = async function handler(req, res) {
   const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
   const geminiKey = process.env.GEMINI_API_KEY;
 
-  // Twitter 換算文字数（URL = 23 字換算）
   function twitterCount(text) {
     const urls = text.match(/https?:\/\/\S+/g) || [];
     const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
@@ -27,11 +26,10 @@ module.exports = async function handler(req, res) {
     return postText;
   }
 
-  // スコアで最良商品を選ぶ（Geminiフォールバック用）
   function pickBest(items) {
     return items.slice().sort((a, b) => {
-      const sa = (b.reviewAverage * 18) + Math.min(b.reviewCount / 8, 22);
-      const sb = (a.reviewAverage * 18) + Math.min(a.reviewCount / 8, 22);
+      const sa = b.reviewAverage * 18 + Math.min(b.reviewCount / 8, 22);
+      const sb = a.reviewAverage * 18 + Math.min(a.reviewCount / 8, 22);
       return sa - sb;
     })[0] || items[0];
   }
@@ -42,13 +40,27 @@ module.exports = async function handler(req, res) {
       '買わなきゃ後悔する神アイテム✨', 'コスパおかしすぎる件🫢',
     ];
     const line1 = hooks[Math.floor(Math.random() * hooks.length)];
-    const priceStr = `¥${Number(item.price).toLocaleString()}`;
-    const line2 = `${priceStr}／${item.name.slice(0, 30)}`;
+    const line2 = `¥${Number(item.price).toLocaleString()}／${item.name.slice(0, 30)}`;
     return `${line1}\n${line2}`;
   }
 
+  async function shortenUrl(rawUrl) {
+    try {
+      const rakutenAppId = process.env.RAKUTEN_APP_ID;
+      if (rakutenAppId) {
+        const r = await fetch(
+          `https://app.rakuten.co.jp/services/api/ShortUrl/Create/20200122?applicationId=${rakutenAppId}&url=${encodeURIComponent(rawUrl)}`
+        );
+        if (r.ok) { const s = (await r.json())?.shortUrl; if (s) return s; }
+      }
+      // Rakuten失敗/未設定でも常にTinyURLを試みる
+      const r2 = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(rawUrl)}`);
+      if (r2.ok) { const t = (await r2.text()).trim(); if (t.startsWith('https://')) return t; }
+    } catch {}
+    return rawUrl;
+  }
+
   try {
-    // rakuten-gift-tool をプロキシとして楽天APIデータを取得
     const proxyParams = new URLSearchParams({
       keyword: genre,
       maxPrice: maxPrice,
@@ -71,23 +83,6 @@ module.exports = async function handler(req, res) {
       url: Item.affiliateUrl || Item.itemUrl,
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
-
-    // URL 短縮ヘルパー（Gemini処理前後どちらからも呼ぶ）
-    async function shortenUrl(rawUrl) {
-      try {
-        const rakutenAppId = process.env.RAKUTEN_APP_ID;
-        if (rakutenAppId) {
-          const r = await fetch(
-            `https://app.rakuten.co.jp/services/api/ShortUrl/Create/20200122?applicationId=${rakutenAppId}&url=${encodeURIComponent(rawUrl)}`
-          );
-          if (r.ok) { const s = (await r.json())?.shortUrl; if (s) return s; }
-        } else {
-          const r = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(rawUrl)}`);
-          if (r.ok) { const t = (await r.text()).trim(); if (t.startsWith('https://')) return t; }
-        }
-      } catch {}
-      return rawUrl;
-    }
 
     let selected, reason, postBody;
 
@@ -128,7 +123,6 @@ ${JSON.stringify(items, null, 2)}
       postBody = ls.slice(0, 2).join('\n');
 
     } catch (geminiErr) {
-      // Gemini失敗 → スコアで最良商品を自動選択してフォールバックテキスト生成
       console.log('[get-product] Gemini failed, using fallback:', geminiErr.message);
       selected = pickBest(items);
       reason = `レビュー評価${selected.reviewAverage}・${selected.reviewCount}件で自動選択`;
