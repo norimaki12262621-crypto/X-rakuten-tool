@@ -109,6 +109,9 @@ URL・ハッシュタグは禁止。
 【禁止】
 神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール`;
 
+  console.log('[generate-post] description:', description);
+  console.log('[generate-post] prompt:', prompt);
+
   try {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
