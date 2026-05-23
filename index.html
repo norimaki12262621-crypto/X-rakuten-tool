@@ -404,16 +404,18 @@ async function fetchProduct() {
 
       // Step2: Gemini で 140 字投稿文を生成
       try {
-        const postRes = await fetch('/api/generate-post', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        const postBody = {
             name: matched.itemName,
             price: matched.itemPrice,
             catchcopy: matched.catchcopy || '',
             description: matched.itemCaption || '',
             url: affUrl,
-          }),
+          };
+        console.log('[generate-post] body:', JSON.stringify(postBody));
+        const postRes = await fetch('/api/generate-post', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(postBody),
         });
         const postData = await postRes.json();
         document.getElementById('post-text').value = postData.postText ||
