@@ -6,6 +6,19 @@ module.exports = async function handler(req, res) {
   const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
   const geminiKey = process.env.GEMINI_API_KEY;
 
+  function dedupeProductName(name) {
+    let cleaned = (name || '').replace(/【[^】]*】/g, '').replace(/\[[^\]]*\]/g, '');
+    const tokens = cleaned.split(/[\s　]+/).filter(t => t.length > 0);
+    const seen = new Set();
+    const deduped = tokens.filter(t => {
+      const key = t.toLowerCase();
+      if (t.length >= 3 && seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return deduped.join(' ').replace(/^[\s・\/]+|[\s・\/]+$/g, '').slice(0, 50);
+  }
+
   function twitterCount(text) {
     const urls = text.match(/https?:\/\/\S+/g) || [];
     const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
@@ -75,7 +88,8 @@ module.exports = async function handler(req, res) {
     }
 
     const items = rakutenData.Items.slice(0, 20).map(({ Item }) => ({
-      name: Item.itemName.slice(0, 60),
+      name: dedupeProductName(Item.itemName),
+      catchcopy: dedupeProductName(Item.catchcopy || ''),
       price: Item.itemPrice,
       reviewCount: Item.reviewCount || 0,
       reviewAverage: Item.reviewAverage || 0,
