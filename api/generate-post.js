@@ -136,13 +136,23 @@ URL・ハッシュタグは禁止。
       clearTimeout(timeout);
     }
     console.log('[generate-post] Gemini HTTP status:', r.status);
-    const data = await r.json();
+    const rawText = await r.text();
+    if (!r.ok) {
+      console.log('[generate-post] Gemini error body:', rawText);
+    }
+    let data;
+    try { data = JSON.parse(rawText); } catch { throw new Error(`Gemini JSONパース失敗: ${rawText.slice(0, 200)}`); }
     if (data.error) {
-      console.log('[generate-post] Gemini error detail:', JSON.stringify(data.error));
-      throw new Error(`Gemini APIエラー(${data.error.code}: ${data.error.status})`);
+      console.log('[generate-post] Gemini error code:', data.error.code);
+      console.log('[generate-post] Gemini error status:', data.error.status);
+      console.log('[generate-post] Gemini error message:', data.error.message);
+      throw new Error(`Gemini APIエラー(${data.error.code} ${data.error.status}: ${data.error.message})`);
     }
     let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!raw) throw new Error('Gemini応答が空');
+    if (!raw) {
+      console.log('[generate-post] Gemini empty response, full data:', JSON.stringify(data));
+      throw new Error('Gemini応答が空');
+    }
 
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
@@ -155,8 +165,8 @@ URL・ハッシュタグは禁止。
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
 
   } catch (err) {
-    // Gemini失敗時はフォールバックテキストで応答（ツールを止めない）
-    console.log('[generate-post] Gemini failed, using fallback:', err.message);
+    const isTimeout = err.name === 'AbortError';
+    console.log('[generate-post] Gemini failed:', isTimeout ? 'TIMEOUT(10s)' : err.message);
     const body = fallbackPost(name, price, catchcopy);
     const postText = trimTo140(body, url);
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText), fallback: true });
