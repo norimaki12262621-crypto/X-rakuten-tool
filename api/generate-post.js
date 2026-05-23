@@ -71,6 +71,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  console.log('[generate-post] req.body RAW:', JSON.stringify(req.body));
+
   const { name: rawName, price, catchcopy, description: rawDescription, url } = req.body;
   // 【】内のSEOワード・重複ワードを除去して自然な商品名に整形
   const name = dedupeProductName(rawName || '');
