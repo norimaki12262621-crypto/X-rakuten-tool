@@ -71,9 +71,10 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { name: rawName, price, catchcopy, url } = req.body;
+  const { name: rawName, price, catchcopy, description: rawDescription, url } = req.body;
   // 【】内のSEOワード・重複ワードを除去して自然な商品名に整形
   const name = dedupeProductName(rawName || '');
+  const description = (rawDescription || '').replace(/[\r\n]+/g, ' ').slice(0, 100);
   console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
@@ -81,29 +82,32 @@ module.exports = async function handler(req, res) {
   const prompt = `楽天商品のXポスト文を【必ず2行だけ】生成してください。
 URL・ハッシュタグは禁止。
 
+【商品情報】
 商品名: ${name}
 価格: ¥${Number(price).toLocaleString()}
 キャッチコピー: ${catchcopy || '（なし）'}
+商品説明: ${description || '（なし）'}
 
 【目的】
-Xで「広告っぽさ」を減らし、"共感・あるある"でスクロールを止める。商品を売り込むのではなく、「それ困ってた」を優先。
+広告っぽい商品紹介ではなく、「日常の小さなストレス」に共感するX投稿を作る。
 
-【出力フォーマット（厳守）】
+【重要】
+商品を褒めるのではなく、「こういう時ちょっと嫌なんだよね」を先に書く。
+
+【出力ルール】
 
 1行目:
-生活の困りごと・あるある・感情を短く書く。「買わなきゃ損」「神アイテム」「後悔」などの煽りは禁止。人間っぽいリアルな言い回し。40文字以内。
+家事・梅雨・暑さ・ズボラ・生活感など、リアルな小さなストレスを書く。人間の独り言っぽく。40文字以内。
 
-良い例:「雨の日の玄関、地獄☔️」「息子の靴、毎日終わってる👟」「部屋干し臭、ほんと無理😇」
+例:「台拭き、すぐびちゃびちゃなる😇」「梅雨の洗い物、地味にだるい☔️」「生活感出るキッチン、ちょい嫌。」
 
 2行目:
-¥価格＋"どう助かったか"を自然に書く。広告感を減らし、「ちょっと気になる」を優先。65文字以内。
+¥価格＋どう快適になったかを自然に書く。広告っぽく褒めすぎない。65文字以内。
 
-良い例:「¥3,980／普通のスニーカー見えなのに防水」「¥2,680／強風でもひっくり返らない傘」
+例:「¥1,870／吸水かなり良くて乾くの早い」「¥1,870／北欧っぽくて出しっぱでもラク」
 
-【禁止事項】
-3行以上・URL・ハッシュタグ・ラベル・丁寧語・「神」「最強」「買わなきゃ損」「バズ」・過剰な煽り・AIっぽい不自然な絶賛
-
-【重要】"広告"ではなく「実際に困ってる人の独り言」みたいな自然さを優先する。`;
+【禁止】
+神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール`;
 
   try {
     const r = await fetch(

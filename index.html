@@ -411,6 +411,7 @@ async function fetchProduct() {
             name: matched.itemName,
             price: matched.itemPrice,
             catchcopy: matched.catchcopy || '',
+            description: matched.itemCaption || '',
             url: affUrl,
           }),
         });
