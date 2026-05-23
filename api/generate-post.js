@@ -5,6 +5,25 @@
 //   3行目: 短縮URL（サーバー側で結合）
 // Twitter 換算 140 字以内をサーバー側で保証
 
+// 楽天商品名の重複ワード・SEOノイズを除去して整形
+function dedupeProductName(name) {
+  // 1. 【】や[]で囲まれたSEOブロックを除去（例: 【楽天1位】【送料無料】）
+  let cleaned = name.replace(/[【【][^】】]*[】】]/g, '').replace(/\[[^\]]*\]/g, '');
+
+  // 2. スペース区切りで分割し、出現済みの単語（3文字以上）を2回目以降削除
+  const tokens = cleaned.split(/[\s　]+/).filter(t => t.length > 0);
+  const seen = new Set();
+  const deduped = tokens.filter(t => {
+    const key = t.toLowerCase();
+    if (t.length >= 3 && seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // 3. 先頭・末尾の空白や記号を整理して最大50文字に収める
+  return deduped.join(' ').replace(/^[\s・\/]+|[\s・\/]+$/g, '').slice(0, 50);
+}
+
 // Twitter 換算文字数（URL = 23 字換算）
 function twitterCount(text) {
   const urls = text.match(/https?:\/\/\S+/g) || [];
@@ -52,7 +71,9 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { name, price, catchcopy, url } = req.body;
+  const { name: rawName, price, catchcopy, url } = req.body;
+  // 【】内のSEOワード・重複ワードを除去して自然な商品名に整形
+  const name = dedupeProductName(rawName || '');
   console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
