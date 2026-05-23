@@ -49,11 +49,11 @@ function trimTo140(body, url) {
 // Gemini が使えない場合のフォールバック投稿文生成
 function fallbackPost(name, price, catchcopy) {
   const hooks = [
-    'これ知らないと損すぎる😱',
-    'え、まだ買ってないの？🔥',
-    '買わなきゃ後悔する神アイテム✨',
-    'スクロール止めて見て🙌',
-    'コスパおかしすぎる件🫢',
+    'これ地味にずっと困ってた😇',
+    '毎回ちょっとだけストレスだったやつ。',
+    'なんか使いにくいな、がずっと続いてた件☔️',
+    'あ、これで解決するんだ。ってなった🙂',
+    'なんとなく不便なままにしてたやつ。',
   ];
   const line1 = hooks[Math.floor(Math.random() * hooks.length)];
   const priceStr = `¥${Number(price).toLocaleString()}`;
