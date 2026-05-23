@@ -1,7 +1,7 @@
 // api/generate-post.js
 // 投稿フォーマット:
-//   1行目: 煽り系キャッチコピー + 絵文字（40字以内）
-//   2行目: 価格 + 具体的メリット（65字以内）
+//   1行目: 共感・あるある系（独り言っぽく、40字以内）
+//   2行目: 価格 + どう助かったか（65字以内）
 //   3行目: 短縮URL（サーバー側で結合）
 // Twitter 換算 140 字以内をサーバー側で保証
 
@@ -73,11 +73,12 @@ module.exports = async function handler(req, res) {
 
   console.log('[generate-post] req.body RAW:', JSON.stringify(req.body));
 
-  const { name: rawName, price, catchcopy, description: rawDescription, url } = req.body;
-  // 【】内のSEOワード・重複ワードを除去して自然な商品名に整形
+  const { name: rawName, price, catchcopy: rawCatchcopy, description: rawDescription, url } = req.body;
+  // 【】内のSEOワード・重複ワードを除去して自然な商品名・キャッチコピーに整形
   const name = dedupeProductName(rawName || '');
+  const catchcopy = dedupeProductName(rawCatchcopy || '');
   const description = (rawDescription || '').replace(/[\r\n]+/g, ' ').slice(0, 100);
-  console.log('[generate-post] req.body:', JSON.stringify({ name, price, catchcopy, description, url }));
+  console.log('[generate-post] processed:', JSON.stringify({ name, price, catchcopy, description, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
 
@@ -115,19 +116,31 @@ URL・ハッシュタグは禁止。
   console.log('[generate-post] prompt:', prompt);
 
   try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 150 },
-        }),
-      }
-    );
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 10000);
+    let r;
+    try {
+      r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.8, maxOutputTokens: 150 },
+          }),
+          signal: ac.signal,
+        }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+    console.log('[generate-post] Gemini HTTP status:', r.status);
     const data = await r.json();
-    if (data.error) throw new Error(`Gemini APIエラー(${data.error.code})`);
+    if (data.error) {
+      console.log('[generate-post] Gemini error detail:', JSON.stringify(data.error));
+      throw new Error(`Gemini APIエラー(${data.error.code}: ${data.error.status})`);
+    }
     let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
     if (!raw) throw new Error('Gemini応答が空');
 
