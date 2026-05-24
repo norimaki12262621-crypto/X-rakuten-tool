@@ -31,6 +31,18 @@ function twitterCount(text) {
   return [...text].length - urlActual + urls.length * 23;
 }
 
+// 2行目の「／」以降を最大60文字に強制カット（超えたら59文字+「…」）
+function trimLine2(line) {
+  const sep = line.indexOf('／');
+  if (sep === -1) return line;
+  const prefix = line.slice(0, sep + 1);
+  const suffixChars = [...line.slice(sep + 1)];
+  if (suffixChars.length > 60) {
+    return prefix + suffixChars.slice(0, 59).join('') + '…';
+  }
+  return line;
+}
+
 // 140 字超えなら2行目から削る → それでも超えなら1行目も削る
 function trimTo140(body, url) {
   let postText = `${body}\n${url}`;
@@ -67,15 +79,7 @@ function fallbackPost(name, price, catchcopy) {
     desc = [...desc].slice(0, 63).join('') + '…';
   }
 
-  // 2行目全体を65文字以内に収める
-  let line2 = desc ? `${priceStr}／${desc}` : priceStr;
-  if ([...line2].length > 65) {
-    const prefixLen = [...`${priceStr}／`].length;
-    const maxDesc = 65 - prefixLen - 1;
-    desc = [...desc].slice(0, maxDesc).join('') + '…';
-    line2 = `${priceStr}／${desc}`;
-  }
-
+  const line2 = trimLine2(desc ? `${priceStr}／${desc}` : priceStr);
   return `${line1}\n${line2}`;
 }
 
@@ -174,9 +178,9 @@ URL・ハッシュタグは禁止。
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
-    // 2行に正規化
+    // 2行に正規化、2行目の／以降を60文字以内に強制カット
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    let body = lines[1] ? `${lines[0]}\n${lines[1]}` : lines[0];
+    let body = lines[1] ? `${lines[0]}\n${trimLine2(lines[1])}` : lines[0];
 
     const postText = trimTo140(body, url);
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
