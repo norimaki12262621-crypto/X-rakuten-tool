@@ -178,11 +178,16 @@ URL・ハッシュタグは禁止。
       throw new Error('Gemini応答が空');
     }
 
+    console.log('[generate-post] Gemini raw:', raw);
+
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
     // 2行に正規化
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    console.log('[generate-post] lines[0]:', lines[0]);
+    console.log('[generate-post] lines[1]:', lines[1]);
+    console.log('[generate-post] lines[1] length:', (lines[1] || '').length);
     let line2 = lines[1] || '';
     if (line2.length > 60) {
       line2 = line2.slice(0, 59) + '…';
