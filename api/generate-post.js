@@ -79,7 +79,10 @@ function fallbackPost(name, price, catchcopy) {
     desc = [...desc].slice(0, 63).join('') + '…';
   }
 
-  const line2 = trimLine2(desc ? `${priceStr}／${desc}` : priceStr);
+  let line2 = desc ? `${priceStr}／${desc}` : priceStr;
+  if (line2.length > 60) {
+    line2 = line2.slice(0, 59) + '…';
+  }
   return `${line1}\n${line2}`;
 }
 
@@ -178,9 +181,13 @@ URL・ハッシュタグは禁止。
     // URLが混入していたら除去
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
-    // 2行に正規化、2行目の／以降を60文字以内に強制カット
+    // 2行に正規化
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    let body = lines[1] ? `${lines[0]}\n${trimLine2(lines[1])}` : lines[0];
+    let line2 = lines[1] || '';
+    if (line2.length > 60) {
+      line2 = line2.slice(0, 59) + '…';
+    }
+    let body = line2 ? `${lines[0]}\n${line2}` : lines[0];
 
     const postText = trimTo140(body, url);
     return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
