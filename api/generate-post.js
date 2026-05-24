@@ -80,9 +80,11 @@ function fallbackPost(name, price, catchcopy) {
   }
 
   let line2 = desc ? `${priceStr}／${desc}` : priceStr;
+  console.log('[fallback] line2 before trim:', line2, '| length:', line2.length);
   if (line2.length > 60) {
     line2 = line2.slice(0, 59) + '…';
   }
+  console.log('[fallback] line2 after trim:', line2, '| length:', line2.length);
   return `${line1}\n${line2}`;
 }
 
