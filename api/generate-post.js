@@ -49,15 +49,18 @@ function trimTo140(body, url) {
 // Gemini が使えない場合のフォールバック投稿文生成
 function fallbackPost(name, price, catchcopy) {
   const hooks = [
-    'これ地味にずっと困ってた😇',
-    '毎回ちょっとだけストレスだったやつ。',
-    'なんか使いにくいな、がずっと続いてた件☔️',
-    'あ、これで解決するんだ。ってなった🙂',
-    'なんとなく不便なままにしてたやつ。',
+    '台拭き、すぐびちゃびちゃなる😇',
+    '梅雨の部屋干し、地味にだるい☔️',
+    'キッチン、なんか生活感出すぎてちょい嫌。',
+    '洗い物のあとの水はね、毎回ちょっとイラつく。',
+    '収納、なんとかしたいなとずっと思ってる。',
+    '掃除のたびに「これじゃないな」ってなる。',
+    '細かいとこの汚れ、見て見ぬふりしてた。',
+    'なんか使いにくいな、がずっと続いてた件。',
   ];
   const line1 = hooks[Math.floor(Math.random() * hooks.length)];
   const priceStr = `¥${Number(price).toLocaleString()}`;
-  const desc = catchcopy ? catchcopy.slice(0, 40) : name.slice(0, 30);
+  const desc = (catchcopy || name).slice(0, 50);
   const line2 = `${priceStr}／${desc}`;
   return `${line1}\n${line2}`;
 }
