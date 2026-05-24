@@ -60,8 +60,22 @@ function fallbackPost(name, price, catchcopy) {
   ];
   const line1 = hooks[Math.floor(Math.random() * hooks.length)];
   const priceStr = `¥${Number(price).toLocaleString()}`;
-  const desc = (catchcopy || name).slice(0, 50);
-  const line2 = `${priceStr}／${desc}`;
+
+  // catchcopyを使う（商品名はそのまま使わない）。64文字超なら63文字+「…」
+  let desc = catchcopy || '';
+  if ([...desc].length > 64) {
+    desc = [...desc].slice(0, 63).join('') + '…';
+  }
+
+  // 2行目全体を65文字以内に収める
+  let line2 = desc ? `${priceStr}／${desc}` : priceStr;
+  if ([...line2].length > 65) {
+    const prefixLen = [...`${priceStr}／`].length;
+    const maxDesc = 65 - prefixLen - 1;
+    desc = [...desc].slice(0, maxDesc).join('') + '…';
+    line2 = `${priceStr}／${desc}`;
+  }
+
   return `${line1}\n${line2}`;
 }
 
@@ -103,17 +117,17 @@ URL・ハッシュタグは禁止。
 【出力ルール】
 
 1行目:
-家事・梅雨・暑さ・ズボラ・生活感など、リアルな小さなストレスを書く。人間の独り言っぽく。40文字以内。
+家事・梅雨・暑さ・ズボラ・生活感など、リアルな小さなストレスを書く。人間の独り言っぽく。40文字以内。商品名をそのまま入れない。
 
 例:「台拭き、すぐびちゃびちゃなる😇」「梅雨の洗い物、地味にだるい☔️」「生活感出るキッチン、ちょい嫌。」
 
 2行目:
-¥価格＋どう快適になったかを自然に書く。広告っぽく褒めすぎない。65文字以内。
+¥価格＋どう快適になったかを自然に書く。広告っぽく褒めすぎない。65文字以内（厳守）。商品名をそのままコピーしない。
 
 例:「¥1,870／吸水かなり良くて乾くの早い」「¥1,870／北欧っぽくて出しっぱでもラク」
 
 【禁止】
-神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール`;
+神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール・「え、まだ買ってないの」系・商品名そのままのコピペ`;
 
   console.log('[generate-post] description:', description);
   console.log('[generate-post] prompt:', prompt);
