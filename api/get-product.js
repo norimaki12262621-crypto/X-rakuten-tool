@@ -101,6 +101,16 @@ module.exports = async function handler(req, res) {
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
 
+    // Groqへ送るのは選定に必要なフィールドのみ・上位8件に絞ってトークン節約
+    const itemsForPrompt = items.slice(0, 8).map((item, i) => ({
+      i,
+      name: item.name,
+      catchcopy: item.catchcopy,
+      price: item.price,
+      reviewCount: item.reviewCount,
+      reviewAverage: item.reviewAverage,
+    }));
+
     let selected, reason, postBody;
 
     try {
@@ -112,7 +122,7 @@ module.exports = async function handler(req, res) {
 以下の商品リストから、Xポストで最もバズりやすい商品を1つ選んでください。
 選定基準：レビュー数が多い、レビュー評価が高い(4.0以上優先)、価格がコスパ良さそう
 商品リスト：
-${JSON.stringify(items, null, 2)}
+${JSON.stringify(itemsForPrompt)}
 以下のJSON形式のみで回答してください：
 {
   "selectedIndex": 選んだ商品のインデックス番号(0始まり),
@@ -132,7 +142,7 @@ ${JSON.stringify(items, null, 2)}
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error('Groq応答のパースに失敗');
       const parsed = JSON.parse(jsonMatch[0]);
-      selected = items[parsed.selectedIndex] || items[0];
+      selected = items[parsed.selectedIndex ?? parsed.i] || items[0];
       reason = parsed.reason || '';
       postBody = (parsed.postText || '').replace(/https?:\/\/\S+/g, '').trim();
       const ls = postBody.split('\n').map(l => l.trim()).filter(l => l.length > 0);
