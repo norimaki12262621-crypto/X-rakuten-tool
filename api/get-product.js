@@ -1,10 +1,12 @@
+const Groq = require('groq-sdk');
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
 
   function dedupeProductName(name) {
     let cleaned = (name || '').replace(/【[^】]*】/g, '').replace(/\[[^\]]*\]/g, '');
@@ -49,8 +51,10 @@ module.exports = async function handler(req, res) {
 
   function fallbackPost(item) {
     const hooks = [
-      'これ知らないと損すぎる😱', 'え、まだ買ってないの？🔥',
-      '買わなきゃ後悔する神アイテム✨', 'コスパおかしすぎる件🫢',
+      '台拭き、すぐびちゃびちゃなる😇',
+      '梅雨の部屋干し、地味にだるい☔️',
+      'キッチン、なんか生活感出すぎてちょい嫌。',
+      'なんか使いにくいな、がずっと続いてた件。',
     ];
     const line1 = hooks[Math.floor(Math.random() * hooks.length)];
     const line2 = `¥${Number(item.price).toLocaleString()}／${item.name.slice(0, 30)}`;
@@ -66,7 +70,6 @@ module.exports = async function handler(req, res) {
         );
         if (r.ok) { const s = (await r.json())?.shortUrl; if (s) return s; }
       }
-      // Rakuten失敗/未設定でも常にTinyURLを試みる
       const r2 = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(rawUrl)}`);
       if (r2.ok) { const t = (await r2.text()).trim(); if (t.startsWith('https://')) return t; }
     } catch {}
@@ -101,7 +104,9 @@ module.exports = async function handler(req, res) {
     let selected, reason, postBody;
 
     try {
-      if (!geminiKey) throw new Error('GEMINI_API_KEY未設定');
+      if (!groqKey) throw new Error('GROQ_API_KEY未設定');
+
+      const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
 
       const prompt = `あなたは楽天市場のアフィリエイターです。
 以下の商品リストから、Xポストで最もバズりやすい商品を1つ選んでください。
@@ -115,20 +120,17 @@ ${JSON.stringify(items, null, 2)}
   "postText": "【必ず2行のみ】1行目:絵文字1〜2個＋思わず目が止まるキャッチコピー(40字以内)／2行目:商品の魅力と価格を自然な文章で(65字以内)。URLもハッシュタグも含めない。"
 }`;
 
-      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
-        }),
+      const completion = await groqClient.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.7,
+        max_tokens: 1000,
       });
 
-      const geminiData = await geminiRes.json();
-      if (geminiData.error) throw new Error(`Gemini APIエラー(${geminiData.error.code})`);
-      const raw = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const raw = (completion.choices[0]?.message?.content || '');
+      console.log('[get-product] Groq raw:', raw);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Gemini応答のパースに失敗');
+      if (!jsonMatch) throw new Error('Groq応答のパースに失敗');
       const parsed = JSON.parse(jsonMatch[0]);
       selected = items[parsed.selectedIndex] || items[0];
       reason = parsed.reason || '';
@@ -136,8 +138,8 @@ ${JSON.stringify(items, null, 2)}
       const ls = postBody.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       postBody = ls.slice(0, 2).join('\n');
 
-    } catch (geminiErr) {
-      console.log('[get-product] Gemini failed, using fallback:', geminiErr.message);
+    } catch (groqErr) {
+      console.log('[get-product] Groq failed, using fallback:', groqErr.message);
       selected = pickBest(items);
       reason = `レビュー評価${selected.reviewAverage}・${selected.reviewCount}件で自動選択`;
       postBody = fallbackPost(selected);
