@@ -4,6 +4,11 @@
 //   2行目: 価格 + どう助かったか（65字以内）
 //   3行目: 短縮URL（サーバー側で結合）
 // Twitter 換算 140 字以内をサーバー側で保証
+//
+// 処理フロー:
+//   1. analyzeProduct() で商品をスコアリング（0-100点）
+//   2. 70点未満 → スキップ（{ success: false, skipped: true, score, analysis }）
+//   3. 70点以上 → 分析で得たHOOKを活用して投稿文生成
 
 // 楽天商品名の重複ワード・SEOノイズを除去して整形
 function dedupeProductName(name) {
@@ -88,6 +93,89 @@ function fallbackPost(name, price, catchcopy) {
   return `${line1}\n${line2}`;
 }
 
+// 商品分析スコアリング（X向け感情評価）
+async function analyzeProduct(name, price, catchcopy, description, geminiKey) {
+  const analysisPrompt = `あなたは「X×楽天アフィリエイト分析AI」です。
+目的は「Xで伸びる商品」「クリックされる商品」「楽天ROOMで売れやすい商品」を見極めること。
+単なる楽天人気商品ではなく、"Xで感情が動くか"を最優先で分析してください。
+
+【商品情報】
+商品名: ${name}
+価格: ¥${Number(price).toLocaleString()}
+キャッチコピー: ${catchcopy || '（なし）'}
+商品説明: ${description || '（なし）'}
+
+【分析項目】以下を100点満点で分析：
+① Xで止まりやすいか → スクロール停止力
+② 共感されやすいか → 「わかる」が起きるか
+③ 季節性があるか → 梅雨・夏・父の日など
+④ 感情が動くか → ストレス解決・便利・悩み
+⑤ ROOMクリックされやすいか → 「気になる」が起きるか
+⑥ 実際に売れやすそうか → 衝動買い・価格帯・実用性
+
+【重要】
+Xでは以下の感情が強い商品を高評価：
+困ってた・めんどい・臭い・暑い・乾かない・父の日迷う・子ども関連・ズボラ救済・生活改善・地味ストレス
+
+【分析結果フォーマット】
+■ 総合評価 ○○点
+■ この商品が強い理由
+■ 弱い理由
+■ X向きか？ S/A/B/C
+■ TikTok向きか？ S/A/B/C
+■ おすすめ投稿方向
+■ おすすめHOOK例（3つ）
+
+HOOKルール：
+広告っぽくしない。
+悪い例：「神アイテム」「買わなきゃ損」
+良い例：「部屋干し、全然乾かない😇」「息子の靴、毎日終わってる👟」「父の日、毎年ネタ切れ。」`;
+
+  const ac = new AbortController();
+  const timeout = setTimeout(() => ac.abort(), 15000);
+  let r;
+  try {
+    r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: analysisPrompt }] }],
+          generationConfig: { temperature: 0.5, maxOutputTokens: 600 },
+        }),
+        signal: ac.signal,
+      }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const rawText = await r.text();
+  if (!r.ok) throw new Error(`分析API HTTPエラー: ${r.status}`);
+
+  let data;
+  try { data = JSON.parse(rawText); } catch { throw new Error('分析JSONパース失敗'); }
+  if (data.error) throw new Error(`分析APIエラー(${data.error.code}): ${data.error.message}`);
+
+  const analysisText = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+  if (!analysisText) throw new Error('分析応答が空');
+
+  // 「■ 総合評価 XX点」からスコア抽出
+  const scoreMatch = analysisText.match(/■\s*総合評価\s*(\d+)\s*点/);
+  const score = scoreMatch ? parseInt(scoreMatch[1], 10) : null;
+
+  // 「おすすめHOOK例」以降の行からHOOKを抽出（40字以内の行のみ）
+  const hookSectionMatch = analysisText.split(/おすすめHOOK例[^\n]*/);
+  const hookRaw = hookSectionMatch.length > 1 ? hookSectionMatch[hookSectionMatch.length - 1] : '';
+  const hooks = hookRaw
+    .split('\n')
+    .map(l => l.replace(/^[\s・\-\d.「*#①②③]+/, '').replace(/」\s*$/, '').trim())
+    .filter(l => l.length > 3 && [...l].length <= 40);
+
+  return { score, analysisText, hooks };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -107,6 +195,39 @@ module.exports = async function handler(req, res) {
   console.log('[generate-post] processed:', JSON.stringify({ name, price, catchcopy, description, url }));
   const geminiKey = process.env.GEMINI_API_KEY;
   if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
+
+  // ── 商品分析スコアリング ──
+  let analysisScore = null;
+  let analysisText = '';
+  let analysisHooks = [];
+  try {
+    const result = await analyzeProduct(name, price, catchcopy, description, geminiKey);
+    analysisScore = result.score;
+    analysisText = result.analysisText;
+    analysisHooks = result.hooks;
+    console.log('[generate-post] 分析スコア:', analysisScore);
+    console.log('[generate-post] 分析HOOK候補:', analysisHooks);
+    console.log('[generate-post] 分析全文:', analysisText);
+  } catch (err) {
+    // 分析失敗時は警告のみ（スキップせず投稿文生成に進む）
+    console.log('[generate-post] 分析スキップ（エラー）:', err.message);
+  }
+
+  // 70点未満はスキップ
+  if (analysisScore !== null && analysisScore < 70) {
+    console.log(`[generate-post] SKIP: スコア${analysisScore}点 < 70点 → 投稿文生成をスキップ`);
+    return res.status(200).json({
+      success: false,
+      skipped: true,
+      score: analysisScore,
+      analysis: analysisText,
+    });
+  }
+
+  // HOOKがあれば投稿プロンプトに候補として渡す
+  const hookHint = analysisHooks.length > 0
+    ? `\n\n【AI分析で選ばれたHOOK候補（1行目に活用してください）】\n${analysisHooks.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
+    : '';
 
   const prompt = `楽天商品のXポスト文を【必ず2行だけ】生成してください。
 URL・ハッシュタグは禁止。
@@ -136,7 +257,7 @@ URL・ハッシュタグは禁止。
 例:「¥1,870／吸水かなり良くて乾くの早い」「¥1,870／北欧っぽくて出しっぱでもラク」
 
 【禁止】
-神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール・「え、まだ買ってないの」系・商品名そのままのコピペ`;
+神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール・「え、まだ買ってないの」系・商品名そのままのコピペ${hookHint}`;
 
   console.log('[generate-post] description:', description);
   console.log('[generate-post] prompt:', prompt);
@@ -197,13 +318,25 @@ URL・ハッシュタグは禁止。
     let body = line2 ? `${lines[0]}\n${line2}` : lines[0];
 
     const postText = trimTo140(body, url);
-    return res.status(200).json({ success: true, postText, charCount: twitterCount(postText) });
+    return res.status(200).json({
+      success: true,
+      postText,
+      charCount: twitterCount(postText),
+      score: analysisScore,
+      analysis: analysisText || undefined,
+    });
 
   } catch (err) {
     const isTimeout = err.name === 'AbortError';
     console.log('[generate-post] Gemini failed:', isTimeout ? 'TIMEOUT(10s)' : err.message);
     const body = fallbackPost(name, price, catchcopy);
     const postText = trimTo140(body, url);
-    return res.status(200).json({ success: true, postText, charCount: twitterCount(postText), fallback: true });
+    return res.status(200).json({
+      success: true,
+      postText,
+      charCount: twitterCount(postText),
+      fallback: true,
+      score: analysisScore,
+    });
   }
 };
