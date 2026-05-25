@@ -1,8 +1,10 @@
 // api/generate-post.js
-// 投稿フォーマット:
-//   1行目: 共感・あるある系（独り言っぽく、40字以内）
-//   2行目: 価格 + 生活の変化（65字以内）
-//   3行目: 短縮URL（サーバー側で結合）
+// 投稿フォーマット（3〜4行）:
+//   1行目: 状況・あるある
+//   2行目: 補足の感情
+//   (空行)
+//   4行目: ¥価格／生活の変化
+//   5行目: 短縮URL
 // Twitter 換算 140 字以内をサーバー側で保証
 //
 // 処理フロー:
@@ -29,55 +31,54 @@ function twitterCount(text) {
   return [...text].length - urlActual + urls.length * 23;
 }
 
-// 140 字超えなら2行目から削る → それでも超えなら1行目も削る
+// 140字超えなら末尾行から1文字ずつ削る
 function trimTo140(body, url) {
   let postText = `${body}\n${url}`;
-  for (const targetLine of [1, 0]) {
-    while (twitterCount(postText) > 140) {
-      const ls = body.split('\n');
-      if (!ls[targetLine] || [...ls[targetLine]].length === 0) break;
-      ls[targetLine] = [...ls[targetLine]].slice(0, -1).join('');
-      body = ls.join('\n');
+  if (twitterCount(postText) <= 140) return postText;
+  const lines = body.split('\n');
+  for (let i = lines.length - 1; i >= 0 && twitterCount(postText) > 140; i--) {
+    while (twitterCount(postText) > 140 && [...(lines[i] || '')].length > 0) {
+      lines[i] = [...lines[i]].slice(0, -1).join('');
+      body = lines.join('\n');
       postText = `${body}\n${url}`;
     }
   }
   return postText;
 }
 
-// カテゴリ別フォールバックhook
+// カテゴリ別フォールバックhook（2行スタイル）
 const FALLBACK_HOOKS = {
-  beauty:    ['朝の肌カサカサすぎて萎える', '乾燥ひどい日、化粧ノリ終わる', 'スキンケアめんどい日ある😇'],
-  household: ['台拭き、すぐびちゃびちゃになる😇', '洗濯物の臭い、地味にきつい', '部屋の散らかり、見て見ぬふり'],
-  kids:      ['子どもへのプレゼント、毎年悩む😅', 'ぬいぐるみって洗えないやつ多い', '子ども、騒ぎすぎてちょい疲れた'],
-  food:      ['料理めんどい日、正直ある', '洗い物多いの地味にしんどい', '夜ご飯、何にすればいいかわからん'],
-  fashion:   ['夏の日差し、顔焼けてくの嫌すぎ', 'コーデ決まらない朝、ちょい萎える', '毎朝同じ服になりがち'],
-  other:     ['なんか使いにくいな、がずっと続いてた件。', '収納、なんとかしたいなとずっと思ってる。', 'キッチン、なんか生活感出すぎてちょい嫌。'],
+  beauty:    ['朝の肌カサカサすぎて萎える\nスキンケアしても意味ない気がしてた😇', '乾燥ひどい日、\n化粧ノリ終わるのほんと萎える'],
+  household: ['部屋干し、\n乾いたと思ったらまだ湿ってる☔️', '台拭き、\nすぐびちゃびちゃになるの地味にしんどい'],
+  kids:      ['子どもの靴、\n翌朝まだ湿ってる絶望👟', '子どもへのプレゼント、\n毎年何あげればいいかわからん😅'],
+  food:      ['料理めんどい日、\n正直かなりある', '洗い物多いの、\n地味にしんどい'],
+  fashion:   ['夏の日差し、\n顔焼けてくの嫌すぎ', 'コーデ決まらない朝、\nちょい萎える'],
+  other:     ['なんか使いにくいな、\nがずっと続いてた件。', '収納、\nなんとかしたいなとずっと思ってる。'],
 };
 
 // Groq が使えない場合のフォールバック
 function fallbackPost(price, catchcopy, category = 'other') {
   const hooks = FALLBACK_HOOKS[category] || FALLBACK_HOOKS.other;
-  const line1 = hooks[Math.floor(Math.random() * hooks.length)];
+  const hook = hooks[Math.floor(Math.random() * hooks.length)];
   const priceStr = `¥${Number(price).toLocaleString()}`;
   let desc = catchcopy || '';
-  if ([...desc].length > 64) desc = [...desc].slice(0, 63).join('') + '…';
-  let line2 = desc ? `${priceStr}／${desc}` : priceStr;
-  if (line2.length > 60) line2 = line2.slice(0, 59) + '…';
-  return `${line1}\n${line2}`;
+  if ([...desc].length > 40) desc = [...desc].slice(0, 39).join('') + '…';
+  const priceLine = desc ? `${priceStr}／${desc}` : priceStr;
+  return `${hook}\n\n${priceLine}`;
 }
 
 // 商品分析（score + category + pain + benefit + hooks を返す）
 async function analyzeProduct(name, price, catchcopy, groqClient) {
   const prompt = `楽天商品をX向けにスコアリングしてJSON1行のみ返してください。説明文不要。
 商品:${name} ¥${Number(price).toLocaleString()} ${catchcopy || ''}
-{"score":0-100,"category":"beauty/household/kids/food/fashion/other","pain":"悩み10字以内","benefit":"生活変化10字以内","hook1":"独り言40字以内","hook2":"独り言40字以内","hook3":"独り言40字以内"}
+{"score":0-100,"category":"beauty/household/kids/food/fashion/other","pain":"悩み15字以内","benefit":"帰宅後〜など生活変化20字以内","hook1":"状況あるある20字以内","hook1b":"補足感情20字以内","hook2":"状況あるある20字以内","hook2b":"補足感情20字以内"}
 高評価条件:ストレス解決/生活改善/子ども/ズボラ/季節感。70点未満=X向きでない。`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
     model: 'llama-3.1-8b-instant',
     temperature: 0.4,
-    max_tokens: 160,
+    max_tokens: 180,
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
@@ -92,7 +93,11 @@ async function analyzeProduct(name, price, catchcopy, groqClient) {
   const category = parsed.category || 'other';
   const pain     = parsed.pain    || '';
   const benefit  = parsed.benefit || '';
-  const hooks    = [parsed.hook1, parsed.hook2, parsed.hook3].filter(h => h && [...h].length <= 40);
+  // hook を「1行目\n2行目」形式で組み立て
+  const hooks = [
+    parsed.hook1 && parsed.hook1b ? `${parsed.hook1}\n${parsed.hook1b}` : parsed.hook1,
+    parsed.hook2 && parsed.hook2b ? `${parsed.hook2}\n${parsed.hook2b}` : parsed.hook2,
+  ].filter(Boolean);
 
   return { score, category, pain, benefit, hooks };
 }
@@ -142,24 +147,30 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ success: false, skipped: true, score: analysisScore });
   }
 
-  // 分析結果をプロンプトに組み込む
-  const painLine    = analysisPain    ? `この商品で解決される悩み:${analysisPain}` : '';
-  const benefitLine = analysisBenefit ? `その後の生活の変化:${analysisBenefit}` : '';
-  const hookLine    = analysisHooks.length > 0
-    ? `参考HOOK(1行目に使う):${analysisHooks.join('/')}`
-    : `参考HOOK:${(FALLBACK_HOOKS[analysisCategory] || FALLBACK_HOOKS.other).join('/')}`;
+  // フォールバックhookを準備（分析hookがない場合）
+  const fallbackHooks = FALLBACK_HOOKS[analysisCategory] || FALLBACK_HOOKS.other;
+  const hookExamples  = analysisHooks.length > 0 ? analysisHooks : fallbackHooks;
 
-  const prompt = `Xポスト文を2行のみ生成。URL・ハッシュタグ禁止。
+  const prompt = `Xの独り言投稿を生成してください。URL・ハッシュタグ禁止。
 商品:${name} ¥${Number(price).toLocaleString()}
-${painLine}
-${benefitLine}
-${hookLine}
+この商品で解決される悩み:${analysisPain || '日常ストレス'}
+使った後の生活の変化:${analysisBenefit || '生活がラクになる'}
 
-1行目(40字以内):「${analysisPain || '日常ストレス'}」を感じている人の本音の独り言。商品名コピペ禁止。広告っぽくしない。
-2行目(65字以内):¥価格／${analysisBenefit || '使ってどう変わったか'}。商品スペック禁止。生活の変化だけ書く。
-悪い2行目:吸水性抜群・高品質・人気
-良い2行目:朝ラク・乾くの早い・ベタつき減った・肌かなりラク
-禁止:神・最強・買わなきゃ損・商品名コピペ`;
+【出力フォーマット】改行を守ること：
+（状況・あるある　20字以内）
+（補足の感情　20字以内）
+
+¥価格／（生活がどう変わるか　65字以内）
+
+【参考HOOKパターン】
+${hookExamples.join('\n---\n')}
+
+【ルール】
+・1〜2行目は「${analysisPain || '日常ストレス'}」を感じている人の本音。商品名コピペ禁止。
+・¥の行:「${analysisBenefit || '生活の変化'}」がどう続くかを自然に書く。商品スペック禁止。
+・良い¥行:「帰宅後すぐ乾かせるのかなりラク」「ベタつかんのに保湿感かなり残る」
+・悪い¥行:「吸水性抜群」「高品質」「大人気」
+禁止ワード:神・最強・買わなきゃ損・話題・人気・高評価・おすすめ・ランキング`;
 
   console.log('[generate-post] prompt length:', prompt.length);
 
@@ -167,22 +178,18 @@ ${hookLine}
     const completion = await groqClient.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
       model: 'llama-3.1-8b-instant',
-      temperature: 0.8,
-      max_tokens: 150,
+      temperature: 0.85,
+      max_tokens: 180,
     });
 
     let raw = (completion.choices[0]?.message?.content || '').trim();
     if (!raw) throw new Error('Groq応答が空');
     console.log('[generate-post] Groq raw:', raw);
 
-    raw = raw.replace(/https?:\/\/\S+/g, '').trim();
-    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    // URL除去・連続空行を1つに正規化
+    raw = raw.replace(/https?:\/\/\S+/g, '').replace(/\n{3,}/g, '\n\n').trim();
 
-    let line2 = lines[1] || '';
-    if (line2.length > 60) line2 = line2.slice(0, 59) + '…';
-    const body = line2 ? `${lines[0]}\n${line2}` : lines[0];
-
-    const postText = trimTo140(body, url);
+    const postText = trimTo140(raw, url);
     return res.status(200).json({
       success: true,
       postText,
