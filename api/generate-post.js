@@ -10,12 +10,11 @@
 //   2. 70点未満 → スキップ（{ success: false, skipped: true, score, analysis }）
 //   3. 70点以上 → 分析で得たHOOKを活用して投稿文生成
 
+const Groq = require('groq-sdk');
+
 // 楽天商品名の重複ワード・SEOノイズを除去して整形
 function dedupeProductName(name) {
-  // 1. 【】や[]で囲まれたSEOブロックを除去（例: 【楽天1位】【送料無料】）
   let cleaned = name.replace(/[【【][^】】]*[】】]/g, '').replace(/\[[^\]]*\]/g, '');
-
-  // 2. スペース区切りで分割し、出現済みの単語（3文字以上）を2回目以降削除
   const tokens = cleaned.split(/[\s　]+/).filter(t => t.length > 0);
   const seen = new Set();
   const deduped = tokens.filter(t => {
@@ -24,8 +23,6 @@ function dedupeProductName(name) {
     seen.add(key);
     return true;
   });
-
-  // 3. 先頭・末尾の空白や記号を整理して最大50文字に収める
   return deduped.join(' ').replace(/^[\s・\/]+|[\s・\/]+$/g, '').slice(0, 50);
 }
 
@@ -34,18 +31,6 @@ function twitterCount(text) {
   const urls = text.match(/https?:\/\/\S+/g) || [];
   const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
   return [...text].length - urlActual + urls.length * 23;
-}
-
-// 2行目の「／」以降を最大60文字に強制カット（超えたら59文字+「…」）
-function trimLine2(line) {
-  const sep = line.indexOf('／');
-  if (sep === -1) return line;
-  const prefix = line.slice(0, sep + 1);
-  const suffixChars = [...line.slice(sep + 1)];
-  if (suffixChars.length > 60) {
-    return prefix + suffixChars.slice(0, 59).join('') + '…';
-  }
-  return line;
 }
 
 // 140 字超えなら2行目から削る → それでも超えなら1行目も削る
@@ -63,7 +48,7 @@ function trimTo140(body, url) {
   return postText;
 }
 
-// Gemini が使えない場合のフォールバック投稿文生成
+// Groq が使えない場合のフォールバック投稿文生成
 function fallbackPost(name, price, catchcopy) {
   const hooks = [
     '台拭き、すぐびちゃびちゃなる😇',
@@ -77,24 +62,15 @@ function fallbackPost(name, price, catchcopy) {
   ];
   const line1 = hooks[Math.floor(Math.random() * hooks.length)];
   const priceStr = `¥${Number(price).toLocaleString()}`;
-
-  // catchcopyを使う（商品名はそのまま使わない）。64文字超なら63文字+「…」
   let desc = catchcopy || '';
-  if ([...desc].length > 64) {
-    desc = [...desc].slice(0, 63).join('') + '…';
-  }
-
+  if ([...desc].length > 64) desc = [...desc].slice(0, 63).join('') + '…';
   let line2 = desc ? `${priceStr}／${desc}` : priceStr;
-  console.log('[fallback] line2 before trim:', line2, '| length:', line2.length);
-  if (line2.length > 60) {
-    line2 = line2.slice(0, 59) + '…';
-  }
-  console.log('[fallback] line2 after trim:', line2, '| length:', line2.length);
+  if (line2.length > 60) line2 = line2.slice(0, 59) + '…';
   return `${line1}\n${line2}`;
 }
 
 // 商品分析スコアリング（X向け感情評価）
-async function analyzeProduct(name, price, catchcopy, description, geminiKey) {
+async function analyzeProduct(name, price, catchcopy, description, groqClient) {
   const analysisPrompt = `あなたは「X×楽天アフィリエイト分析AI」です。
 目的は「Xで伸びる商品」「クリックされる商品」「楽天ROOMで売れやすい商品」を見極めること。
 単なる楽天人気商品ではなく、"Xで感情が動くか"を最優先で分析してください。
@@ -131,41 +107,19 @@ HOOKルール：
 悪い例：「神アイテム」「買わなきゃ損」
 良い例：「部屋干し、全然乾かない😇」「息子の靴、毎日終わってる👟」「父の日、毎年ネタ切れ。」`;
 
-  const ac = new AbortController();
-  const timeout = setTimeout(() => ac.abort(), 15000);
-  let r;
-  try {
-    r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: analysisPrompt }] }],
-          generationConfig: { temperature: 0.5, maxOutputTokens: 600 },
-        }),
-        signal: ac.signal,
-      }
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+  const completion = await groqClient.chat.completions.create({
+    messages: [{ role: 'user', content: analysisPrompt }],
+    model: 'llama-3.1-8b-instant',
+    temperature: 0.5,
+    max_tokens: 600,
+  });
 
-  const rawText = await r.text();
-  if (!r.ok) throw new Error(`分析API HTTPエラー: ${r.status}`);
-
-  let data;
-  try { data = JSON.parse(rawText); } catch { throw new Error('分析JSONパース失敗'); }
-  if (data.error) throw new Error(`分析APIエラー(${data.error.code}): ${data.error.message}`);
-
-  const analysisText = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+  const analysisText = (completion.choices[0]?.message?.content || '').trim();
   if (!analysisText) throw new Error('分析応答が空');
 
-  // 「■ 総合評価 XX点」からスコア抽出
   const scoreMatch = analysisText.match(/■\s*総合評価\s*(\d+)\s*点/);
   const score = scoreMatch ? parseInt(scoreMatch[1], 10) : null;
 
-  // 「おすすめHOOK例」以降の行からHOOKを抽出（40字以内の行のみ）
   const hookSectionMatch = analysisText.split(/おすすめHOOK例[^\n]*/);
   const hookRaw = hookSectionMatch.length > 1 ? hookSectionMatch[hookSectionMatch.length - 1] : '';
   const hooks = hookRaw
@@ -188,20 +142,22 @@ module.exports = async function handler(req, res) {
   console.log('[generate-post] req.body RAW:', JSON.stringify(req.body));
 
   const { name: rawName, price, catchcopy: rawCatchcopy, description: rawDescription, url } = req.body;
-  // 【】内のSEOワード・重複ワードを除去して自然な商品名・キャッチコピーに整形
   const name = dedupeProductName(rawName || '');
   const catchcopy = dedupeProductName(rawCatchcopy || '');
   const description = (rawDescription || '').replace(/[\r\n]+/g, ' ').slice(0, 100);
   console.log('[generate-post] processed:', JSON.stringify({ name, price, catchcopy, description, url }));
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) return res.status(500).json({ success: false, error: 'GEMINI_API_KEYが未設定' });
+
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ success: false, error: 'GROQ_API_KEYが未設定' });
+
+  const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
 
   // ── 商品分析スコアリング ──
   let analysisScore = null;
   let analysisText = '';
   let analysisHooks = [];
   try {
-    const result = await analyzeProduct(name, price, catchcopy, description, geminiKey);
+    const result = await analyzeProduct(name, price, catchcopy, description, groqClient);
     analysisScore = result.score;
     analysisText = result.analysisText;
     analysisHooks = result.hooks;
@@ -209,7 +165,6 @@ module.exports = async function handler(req, res) {
     console.log('[generate-post] 分析HOOK候補:', analysisHooks);
     console.log('[generate-post] 分析全文:', analysisText);
   } catch (err) {
-    // 分析失敗時は警告のみ（スキップせず投稿文生成に進む）
     console.log('[generate-post] 分析スキップ（エラー）:', err.message);
   }
 
@@ -224,7 +179,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // HOOKがあれば投稿プロンプトに候補として渡す
+  // HOOKがあれば1行目候補として投稿プロンプトに渡す
   const hookHint = analysisHooks.length > 0
     ? `\n\n【AI分析で選ばれたHOOK候補（1行目に活用してください）】\n${analysisHooks.map((h, i) => `${i + 1}. ${h}`).join('\n')}`
     : '';
@@ -259,62 +214,29 @@ URL・ハッシュタグは禁止。
 【禁止】
 神・最強・バズ・買わなきゃ損・後悔・過剰な煽り・AIっぽい絶賛・レビュー件数アピール・「え、まだ買ってないの」系・商品名そのままのコピペ${hookHint}`;
 
-  console.log('[generate-post] description:', description);
   console.log('[generate-post] prompt:', prompt);
 
   try {
-    const ac = new AbortController();
-    const timeout = setTimeout(() => ac.abort(), 10000);
-    let r;
-    try {
-      r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${geminiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.8, maxOutputTokens: 150 },
-          }),
-          signal: ac.signal,
-        }
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
-    console.log('[generate-post] Gemini HTTP status:', r.status);
-    const rawText = await r.text();
-    if (!r.ok) {
-      console.log('[generate-post] Gemini error body:', rawText);
-    }
-    let data;
-    try { data = JSON.parse(rawText); } catch { throw new Error(`Gemini JSONパース失敗: ${rawText.slice(0, 200)}`); }
-    if (data.error) {
-      console.log('[generate-post] Gemini error code:', data.error.code);
-      console.log('[generate-post] Gemini error status:', data.error.status);
-      console.log('[generate-post] Gemini error message:', data.error.message);
-      throw new Error(`Gemini APIエラー(${data.error.code} ${data.error.status}: ${data.error.message})`);
-    }
-    let raw = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-    if (!raw) {
-      console.log('[generate-post] Gemini empty response, full data:', JSON.stringify(data));
-      throw new Error('Gemini応答が空');
-    }
+    const completion = await groqClient.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.8,
+      max_tokens: 150,
+    });
 
-    console.log('[generate-post] Gemini raw:', raw);
+    let raw = (completion.choices[0]?.message?.content || '').trim();
+    if (!raw) throw new Error('Groq応答が空');
 
-    // URLが混入していたら除去
+    console.log('[generate-post] Groq raw:', raw);
+
     raw = raw.replace(/https?:\/\/\S+/g, '').trim();
 
-    // 2行に正規化
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     console.log('[generate-post] lines[0]:', lines[0]);
     console.log('[generate-post] lines[1]:', lines[1]);
-    console.log('[generate-post] lines[1] length:', (lines[1] || '').length);
+
     let line2 = lines[1] || '';
-    if (line2.length > 60) {
-      line2 = line2.slice(0, 59) + '…';
-    }
+    if (line2.length > 60) line2 = line2.slice(0, 59) + '…';
     let body = line2 ? `${lines[0]}\n${line2}` : lines[0];
 
     const postText = trimTo140(body, url);
@@ -327,8 +249,7 @@ URL・ハッシュタグは禁止。
     });
 
   } catch (err) {
-    const isTimeout = err.name === 'AbortError';
-    console.log('[generate-post] Gemini failed:', isTimeout ? 'TIMEOUT(10s)' : err.message);
+    console.log('[generate-post] Groq failed:', err.message);
     const body = fallbackPost(name, price, catchcopy);
     const postText = trimTo140(body, url);
     return res.status(200).json({
