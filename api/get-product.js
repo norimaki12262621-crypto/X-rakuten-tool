@@ -1,5 +1,3 @@
-const Groq = require('groq-sdk');
-
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -29,12 +27,12 @@ module.exports = async function handler(req, res) {
 
   function trimTo140(body, url) {
     let postText = `${body}\n${url}`;
-    for (const idx of [1, 0]) {
+    const lines = body.split('\n');
+    for (let idx = lines.length - 1; idx >= 0; idx--) {
       while (twitterCount(postText) > 140) {
-        const parts = body.split('\n');
-        if (!parts[idx] || [...parts[idx]].length === 0) break;
-        parts[idx] = [...parts[idx]].slice(0, -1).join('');
-        body = parts.join('\n');
+        if (!lines[idx] || [...lines[idx]].length === 0) break;
+        lines[idx] = [...lines[idx]].slice(0, -1).join('');
+        body = lines.join('\n');
         postText = `${body}\n${url}`;
       }
     }
@@ -49,16 +47,132 @@ module.exports = async function handler(req, res) {
     })[0] || items[0];
   }
 
-  function fallbackPost(item) {
-    const hooks = [
-      '台拭き、すぐびちゃびちゃなる😇',
-      '梅雨の部屋干し、地味にだるい☔️',
-      'キッチン、なんか生活感出すぎてちょい嫌。',
-      'なんか使いにくいな、がずっと続いてた件。',
-    ];
-    const line1 = hooks[Math.floor(Math.random() * hooks.length)];
-    const line2 = `¥${Number(item.price).toLocaleString()}／${item.name.slice(0, 30)}`;
-    return `${line1}\n${line2}`;
+  const CATEGORY_COPY = {
+    beauty: {
+      hooks: [
+        '朝の支度、\n髪まとまらないだけで詰む',
+        '乾燥ひどい日、\n化粧ノリ終わるの萎える',
+        'お風呂上がり、\nちゃんとケアする余力ほしい',
+      ],
+      benefits: [
+        '朝の支度がちょっとラクになる',
+        'ベタつきにくくて気分よく整う',
+        '毎日のケアを続けやすい',
+      ],
+    },
+    household: {
+      hooks: [
+        '部屋干し、\n乾いたと思ったらまだ湿ってる',
+        '家の小さいストレス、\n積み重なると地味にしんどい',
+        '片づけたはずなのに、\n生活感が残るのつらい',
+      ],
+      benefits: [
+        '家事のひっかかりがひとつ減る',
+        '置くだけでいつもの面倒が軽くなる',
+        '毎日使う場所が少し整う',
+      ],
+    },
+    kids: {
+      hooks: [
+        '子ども用品、\n必要になるタイミング急すぎ',
+        '子どもへのプレゼント、\n毎回けっこう悩む',
+        '朝のバタバタ、\n子ども関連でだいたい増える',
+      ],
+      benefits: [
+        '親の準備ストレスが少し減る',
+        '子どもも使いやすくて出番が増える',
+        '毎日の支度がちょっと回しやすい',
+      ],
+    },
+    food: {
+      hooks: [
+        '料理めんどい日、\n正直かなりある',
+        'ごはんの準備、\n考えるだけで疲れる日ある',
+        '洗い物多いの、\n地味にしんどい',
+      ],
+      benefits: [
+        '食卓の準備がかなりラクになる',
+        '忙しい日のごはん問題を助けてくれる',
+        '手間少なめでちゃんと満足感ある',
+      ],
+    },
+    fashion: {
+      hooks: [
+        'コーデ決まらない朝、\nちょい萎える',
+        '出かける前、\nなんか物足りない日ある',
+        '季節の服選び、\n毎年ちょっと迷う',
+      ],
+      benefits: [
+        'いつもの服に合わせやすい',
+        '出かける前の迷いが少し減る',
+        '季節感を足しやすい',
+      ],
+    },
+    other: {
+      hooks: [
+        'なんか使いにくいな、\nがずっと続いてた件。',
+        '小さい不便、\n放置するとずっと気になる',
+        'これ地味に困る、\nって場面けっこうある',
+      ],
+      benefits: [
+        'いつもの不便が少しラクになる',
+        '使うたびに小さく助かる',
+        '生活の引っかかりがひとつ減る',
+      ],
+    },
+  };
+
+  function pick(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function normalizeCategory(category) {
+    return CATEGORY_COPY[category] ? category : 'other';
+  }
+
+  function inferCategoryFromText(text) {
+    const source = text.toLowerCase();
+    if (/美容|コスメ|化粧|髪|ヘア|肌|保湿|メイク|シャンプー|オイル|ネイル/.test(source)) return 'beauty';
+    if (/掃除|収納|洗濯|乾燥|除湿|キッチン|台所|風呂|トイレ|部屋干し|家事/.test(source)) return 'household';
+    if (/子ども|子供|キッズ|ベビー|赤ちゃん|入園|入学|靴|おもちゃ|知育/.test(source)) return 'kids';
+    if (/食品|惣菜|肉|魚|米|スイーツ|お菓子|料理|ごはん|冷凍|麺|珈琲|コーヒー/.test(source)) return 'food';
+    if (/服|バッグ|財布|靴|帽子|ワンピ|トップス|パンツ|コーデ|ファッション|アクセ/.test(source)) return 'fashion';
+    return 'other';
+  }
+
+  function buildPost(item, category = 'other') {
+    const copy = CATEGORY_COPY[normalizeCategory(category)];
+    const hook = pick(copy.hooks);
+    const benefit = pick(copy.benefits);
+    return `${hook}\n\n¥${Number(item.price).toLocaleString()}／${benefit}`;
+  }
+
+  function createGroqClient(apiKey) {
+    const Groq = require('groq-sdk');
+    return new Groq({ apiKey, timeout: 15000 });
+  }
+
+  async function analyzeCategory(item, groqClient) {
+    const prompt = `楽天商品を次のカテゴリのどれか1つに分類し、JSONのみ返してください。説明文不要。
+カテゴリ: beauty / household / kids / food / fashion / other
+商品名:${item.name}
+キャッチコピー:${item.catchcopy || ''}
+価格:¥${Number(item.price).toLocaleString()}
+{"category":"beauty/household/kids/food/fashion/other"}`;
+
+    const completion = await groqClient.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.2,
+      max_tokens: 80,
+    });
+
+    const raw = (completion.choices[0]?.message?.content || '').trim();
+    console.log('[get-product] category raw:', raw);
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('カテゴリJSONパース失敗');
+    const parsed = JSON.parse(jsonMatch[0]);
+    return normalizeCategory(parsed.category);
   }
 
   async function shortenUrl(rawUrl) {
@@ -101,60 +215,19 @@ module.exports = async function handler(req, res) {
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
 
-    // Groqへ送るのは選定に必要なフィールドのみ・上位8件に絞ってトークン節約
-    const itemsForPrompt = items.slice(0, 8).map((item, i) => ({
-      i,
-      name: item.name,
-      catchcopy: item.catchcopy,
-      price: item.price,
-      reviewCount: item.reviewCount,
-      reviewAverage: item.reviewAverage,
-    }));
-
-    let selected, reason, postBody;
-
+    const selected = pickBest(items);
+    let category = inferCategoryFromText(`${genre} ${selected.name} ${selected.catchcopy}`);
     try {
-      if (!groqKey) throw new Error('GROQ_API_KEY未設定');
-
-      const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
-
-      const prompt = `あなたは楽天市場のアフィリエイターです。
-以下の商品リストから、Xポストで最もバズりやすい商品を1つ選んでください。
-選定基準：レビュー数が多い、レビュー評価が高い(4.0以上優先)、価格がコスパ良さそう
-商品リスト：
-${JSON.stringify(itemsForPrompt)}
-以下のJSON形式のみで回答してください：
-{
-  "selectedIndex": 選んだ商品のインデックス番号(0始まり),
-  "reason": "選んだ理由（日本語で50字以内）",
-  "postText": "【必ず2行のみ。URL・ハッシュタグ禁止】1行目(40字以内):日常ストレスの独り言。商品名コピペ禁止。例:「子どもへのプレゼント、毎年悩む😅」「台拭き、すぐびちゃびちゃになる😇」。2行目(65字以内):¥価格／どう解決したか。褒めすぎない。例:「¥1,870／吸水良くて乾くの早い」。禁止:神・最強・買わなきゃ損・商品名コピペ"
-}`;
-
-      const completion = await groqClient.chat.completions.create({
-        messages: [{ role: 'user', content: prompt }],
-        model: 'llama-3.1-8b-instant',
-        temperature: 0.7,
-        max_tokens: 1000,
-      });
-
-      const raw = (completion.choices[0]?.message?.content || '');
-      console.log('[get-product] Groq raw:', raw);
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Groq応答のパースに失敗');
-      const parsed = JSON.parse(jsonMatch[0]);
-      selected = items[parsed.selectedIndex ?? parsed.i] || items[0];
-      reason = parsed.reason || '';
-      postBody = (parsed.postText || '').replace(/https?:\/\/\S+/g, '').trim();
-      const ls = postBody.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      postBody = ls.slice(0, 2).join('\n');
-
-    } catch (groqErr) {
-      console.log('[get-product] Groq failed, using fallback:', groqErr.message);
-      selected = pickBest(items);
-      reason = `レビュー評価${selected.reviewAverage}・${selected.reviewCount}件で自動選択`;
-      postBody = fallbackPost(selected);
+      if (groqKey) {
+        const groqClient = createGroqClient(groqKey);
+        category = await analyzeCategory(selected, groqClient);
+      }
+    } catch (err) {
+      console.log('[get-product] category fallback:', err.message);
     }
 
+    const reason = `レビュー評価${selected.reviewAverage}・${selected.reviewCount}件で自動選択`;
+    const postBody = buildPost(selected, category);
     const shortUrl = await shortenUrl(selected.url);
     const postText = trimTo140(postBody, shortUrl);
 
@@ -163,6 +236,7 @@ ${JSON.stringify(itemsForPrompt)}
       product: { ...selected, url: shortUrl },
       reason,
       postText,
+      category,
     });
 
   } catch (err) {

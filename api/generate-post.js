@@ -8,11 +8,8 @@
 // Twitter 換算 140 字以内をサーバー側で保証
 //
 // 処理フロー:
-//   1. analyzeProduct() → productType / scene / pain / benefit / hooks を取得
-//   2. 70点未満 → スキップ
-//   3. 投稿プロンプトには商品名を渡さず productType+scene で書かせる
-
-const Groq = require('groq-sdk');
+//   1. Groq でカテゴリだけ判定
+//   2. カテゴリ別 hook/benefit 辞書から投稿本文を生成
 
 // SEOノイズ除去
 function cleanProductName(name = '') {
@@ -46,33 +43,120 @@ function trimTo140(body, url) {
   return postText;
 }
 
-// カテゴリ別フォールバックhook（2行スタイル）
-const FALLBACK_HOOKS = {
-  beauty:    ['朝の髪、\n湿気で広がるのほんと無理😇', '乾燥ひどい日、\n化粧ノリ終わるのほんと萎える'],
-  household: ['部屋干し、\n乾いたと思ったらまだ湿ってる☔️', '台拭き、\nすぐびちゃびちゃになるの地味にしんどい'],
-  kids:      ['子どもの靴、\n翌朝まだ湿ってる絶望👟', '子どもへのプレゼント、\n毎年何あげればいいかわからん😅'],
-  food:      ['料理めんどい日、\n正直かなりある', '洗い物多いの、\n地味にしんどい'],
-  fashion:   ['夏の日差し、\n顔焼けてくの嫌すぎ', 'コーデ決まらない朝、\nちょい萎える'],
-  other:     ['なんか使いにくいな、\nがずっと続いてた件。', '収納、\nなんとかしたいなとずっと思ってる。'],
+const CATEGORY_COPY = {
+  beauty: {
+    hooks: [
+      '朝の支度、\n髪まとまらないだけで詰む',
+      '乾燥ひどい日、\n化粧ノリ終わるの萎える',
+      'お風呂上がり、\nちゃんとケアする余力ほしい',
+    ],
+    benefits: [
+      '朝の支度がちょっとラクになる',
+      'ベタつきにくくて気分よく整う',
+      '毎日のケアを続けやすい',
+    ],
+  },
+  household: {
+    hooks: [
+      '部屋干し、\n乾いたと思ったらまだ湿ってる',
+      '家の小さいストレス、\n積み重なると地味にしんどい',
+      '片づけたはずなのに、\n生活感が残るのつらい',
+    ],
+    benefits: [
+      '家事のひっかかりがひとつ減る',
+      '置くだけでいつもの面倒が軽くなる',
+      '毎日使う場所が少し整う',
+    ],
+  },
+  kids: {
+    hooks: [
+      '子ども用品、\n必要になるタイミング急すぎ',
+      '子どもへのプレゼント、\n毎回けっこう悩む',
+      '朝のバタバタ、\n子ども関連でだいたい増える',
+    ],
+    benefits: [
+      '親の準備ストレスが少し減る',
+      '子どもも使いやすくて出番が増える',
+      '毎日の支度がちょっと回しやすい',
+    ],
+  },
+  food: {
+    hooks: [
+      '料理めんどい日、\n正直かなりある',
+      'ごはんの準備、\n考えるだけで疲れる日ある',
+      '洗い物多いの、\n地味にしんどい',
+    ],
+    benefits: [
+      '食卓の準備がかなりラクになる',
+      '忙しい日のごはん問題を助けてくれる',
+      '手間少なめでちゃんと満足感ある',
+    ],
+  },
+  fashion: {
+    hooks: [
+      'コーデ決まらない朝、\nちょい萎える',
+      '出かける前、\nなんか物足りない日ある',
+      '季節の服選び、\n毎年ちょっと迷う',
+    ],
+    benefits: [
+      'いつもの服に合わせやすい',
+      '出かける前の迷いが少し減る',
+      '季節感を足しやすい',
+    ],
+  },
+  other: {
+    hooks: [
+      'なんか使いにくいな、\nがずっと続いてた件。',
+      '小さい不便、\n放置するとずっと気になる',
+      'これ地味に困る、\nって場面けっこうある',
+    ],
+    benefits: [
+      'いつもの不便が少しラクになる',
+      '使うたびに小さく助かる',
+      '生活の引っかかりがひとつ減る',
+    ],
+  },
 };
 
-// Groq が使えない場合のフォールバック
-function fallbackPost(price, catchcopy, category = 'other') {
-  const hooks = FALLBACK_HOOKS[category] || FALLBACK_HOOKS.other;
-  const hook = hooks[Math.floor(Math.random() * hooks.length)];
-  const priceStr = `¥${Number(price).toLocaleString()}`;
-  let desc = catchcopy || '';
-  if ([...desc].length > 40) desc = [...desc].slice(0, 39).join('') + '…';
-  const priceLine = desc ? `${priceStr}／${desc}` : priceStr;
-  return `${hook}\n\n${priceLine}`;
+function pick(list) {
+  return list[Math.floor(Math.random() * list.length)];
 }
 
-// 商品分析（score + productType + scene + pain + benefit + hooks を返す）
-async function analyzeProduct(name, price, catchcopy, groqClient) {
-  const prompt = `楽天商品をX向けにスコアリングしてJSON1行のみ返してください。説明文不要。
-商品名:${name} ¥${Number(price).toLocaleString()} ${catchcopy || ''}
-{"score":0-100,"category":"beauty/household/kids/food/fashion/other","productType":"商品の一般名称（例:ヘアオイル・除湿機・靴乾燥機）","scene":"この商品が必要な生活シーン20字以内","pain":"悩み15字以内","benefit":"使った後の生活変化20字以内","hook1":"状況あるある20字以内","hook1b":"補足感情20字以内","hook2":"状況あるある20字以内","hook2b":"補足感情20字以内"}
-高評価条件:ストレス解決/生活改善/子ども/ズボラ/季節感。70点未満=X向きでない。`;
+function normalizeCategory(category) {
+  return CATEGORY_COPY[category] ? category : 'other';
+}
+
+function inferCategoryFromText(text) {
+  const source = text.toLowerCase();
+  if (/美容|コスメ|化粧|髪|ヘア|肌|保湿|メイク|シャンプー|オイル|ネイル/.test(source)) return 'beauty';
+  if (/掃除|収納|洗濯|乾燥|除湿|キッチン|台所|風呂|トイレ|部屋干し|家事/.test(source)) return 'household';
+  if (/子ども|子供|キッズ|ベビー|赤ちゃん|入園|入学|靴|おもちゃ|知育/.test(source)) return 'kids';
+  if (/食品|惣菜|肉|魚|米|スイーツ|お菓子|料理|ごはん|冷凍|麺|珈琲|コーヒー/.test(source)) return 'food';
+  if (/服|バッグ|財布|靴|帽子|ワンピ|トップス|パンツ|コーデ|ファッション|アクセ/.test(source)) return 'fashion';
+  return 'other';
+}
+
+function buildPost(price, category = 'other') {
+  const copy = CATEGORY_COPY[normalizeCategory(category)];
+  const hook = pick(copy.hooks);
+  const benefit = pick(copy.benefits);
+  const priceStr = `¥${Number(price).toLocaleString()}`;
+  return `${hook}\n\n${priceStr}／${benefit}`;
+}
+
+function createGroqClient(apiKey) {
+  const Groq = require('groq-sdk');
+  return new Groq({ apiKey, timeout: 15000 });
+}
+
+async function analyzeCategory(name, price, catchcopy, description, groqClient) {
+  const prompt = `楽天商品を次のカテゴリのどれか1つに分類し、JSONのみ返してください。説明文不要。
+カテゴリ: beauty / household / kids / food / fashion / other
+商品名:${name}
+価格:¥${Number(price).toLocaleString()}
+キャッチコピー:${catchcopy || ''}
+説明:${description || ''}
+{"category":"beauty/household/kids/food/fashion/other"}`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
@@ -82,25 +166,13 @@ async function analyzeProduct(name, price, catchcopy, groqClient) {
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
-  if (!raw) throw new Error('分析応答が空');
-  console.log('[generate-post] 分析raw:', raw);
+  if (!raw) throw new Error('カテゴリ分析応答が空');
+  console.log('[generate-post] category raw:', raw);
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('分析JSONパース失敗');
+  if (!jsonMatch) throw new Error('カテゴリJSONパース失敗');
   const parsed = JSON.parse(jsonMatch[0]);
-
-  const score       = typeof parsed.score === 'number' ? parsed.score : null;
-  const category    = parsed.category    || 'other';
-  const productType = parsed.productType || '';
-  const scene       = parsed.scene       || '';
-  const pain        = parsed.pain        || '';
-  const benefit     = parsed.benefit     || '';
-  const hooks = [
-    parsed.hook1 && parsed.hook1b ? `${parsed.hook1}\n${parsed.hook1b}` : parsed.hook1,
-    parsed.hook2 && parsed.hook2b ? `${parsed.hook2}\n${parsed.hook2b}` : parsed.hook2,
-  ].filter(Boolean);
-
-  return { score, category, productType, scene, pain, benefit, hooks };
+  return normalizeCategory(parsed.category);
 }
 
 module.exports = async function handler(req, res) {
@@ -119,101 +191,22 @@ module.exports = async function handler(req, res) {
   console.log('[generate-post] processed:', JSON.stringify({ name, price, catchcopy, url }));
 
   const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
-  if (!groqKey) return res.status(500).json({ success: false, error: 'GROQ_API_KEYが未設定' });
-
-  const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
-
-  // ── 商品分析 ──
-  let analysisScore       = null;
-  let analysisCategory    = 'other';
-  let analysisProductType = '';
-  let analysisScene       = '';
-  let analysisPain        = '';
-  let analysisBenefit     = '';
-  let analysisHooks       = [];
+  let category = inferCategoryFromText(`${name} ${catchcopy} ${description}`);
   try {
-    const result        = await analyzeProduct(name, price, catchcopy, groqClient);
-    analysisScore       = result.score;
-    analysisCategory    = result.category;
-    analysisProductType = result.productType;
-    analysisScene       = result.scene;
-    analysisPain        = result.pain;
-    analysisBenefit     = result.benefit;
-    analysisHooks       = result.hooks;
-    console.log('[generate-post] 分析:', JSON.stringify({ analysisScore, analysisProductType, analysisScene, analysisPain, analysisBenefit }));
+    if (groqKey) {
+      const groqClient = createGroqClient(groqKey);
+      category = await analyzeCategory(name, price, catchcopy, description, groqClient);
+    }
   } catch (err) {
-    console.log('[generate-post] 分析スキップ（エラー）:', err.message);
+    console.log('[generate-post] category fallback:', err.message);
   }
 
-  // 70点未満はスキップ
-  if (analysisScore !== null && analysisScore < 70) {
-    console.log(`[generate-post] SKIP: ${analysisScore}点 < 70点`);
-    return res.status(200).json({ success: false, skipped: true, score: analysisScore });
-  }
-
-  const hookExamples = analysisHooks.length > 0
-    ? analysisHooks
-    : (FALLBACK_HOOKS[analysisCategory] || FALLBACK_HOOKS.other);
-
-  // 投稿プロンプト：商品名を渡さず productType+scene+pain+benefit のみで書かせる
-  const prompt = `Xの独り言投稿を生成してください。URL・ハッシュタグ禁止。
-
-【STEP1】この商品は「${analysisProductType || '生活雑貨'}」です。
-【STEP2】生活シーン:「${analysisScene || analysisPain || '日常のストレス'}」を想像してください。
-【STEP3】その人の本音の独り言として投稿文を書いてください。
-
-【絶対禁止】商品名・型番・ブランド名を文章に入れない。
-【絶対禁止】ECサイト説明・スペック読み上げ・レビュー口調。
-
-【出力フォーマット】
-（状況・あるある　20字以内）
-（補足の感情　20字以内）
-
-¥${Number(price).toLocaleString()}／（「${analysisBenefit || '生活の変化'}」をどう表現するか　65字以内）
-
-【参考HOOKパターン】
-${hookExamples.join('\n---\n')}
-
-【¥行ルール】
-良い:「帰宅後すぐ乾かせるのかなりラク」「ベタつかんのに保湿感かなり残る」「朝の支度が5分ラクになった」
-悪い:「吸水性抜群」「高品質」「大人気」「商品名がすごい」
-禁止:神・最強・買わなきゃ損・話題・人気・高評価・おすすめ・ランキング`;
-
-  console.log('[generate-post] prompt length:', prompt.length);
-
-  try {
-    const completion = await groqClient.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.1-8b-instant',
-      temperature: 0.85,
-      max_tokens: 180,
-    });
-
-    let raw = (completion.choices[0]?.message?.content || '').trim();
-    if (!raw) throw new Error('Groq応答が空');
-    console.log('[generate-post] Groq raw:', raw);
-
-    // URL除去・連続空行を1つに正規化
-    raw = raw.replace(/https?:\/\/\S+/g, '').replace(/\n{3,}/g, '\n\n').trim();
-
-    const postText = trimTo140(raw, url);
-    return res.status(200).json({
-      success: true,
-      postText,
-      charCount: twitterCount(postText),
-      score: analysisScore,
-    });
-
-  } catch (err) {
-    console.log('[generate-post] Groq failed:', err.message);
-    const body = fallbackPost(price, catchcopy, analysisCategory);
-    const postText = trimTo140(body, url);
-    return res.status(200).json({
-      success: true,
-      postText,
-      charCount: twitterCount(postText),
-      fallback: true,
-      score: analysisScore,
-    });
-  }
+  const body = buildPost(price, category);
+  const postText = trimTo140(body, url);
+  return res.status(200).json({
+    success: true,
+    postText,
+    charCount: twitterCount(postText),
+    category,
+  });
 };
