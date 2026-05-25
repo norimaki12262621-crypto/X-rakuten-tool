@@ -8,9 +8,9 @@
 // Twitter 換算 140 字以内をサーバー側で保証
 //
 // 処理フロー:
-//   1. analyzeProduct() → score / category / pain / benefit / hooks を取得
+//   1. analyzeProduct() → productType / scene / pain / benefit / hooks を取得
 //   2. 70点未満 → スキップ
-//   3. 70点以上 → 分析結果を丸ごと投稿プロンプトに渡す
+//   3. 投稿プロンプトには商品名を渡さず productType+scene で書かせる
 
 const Groq = require('groq-sdk');
 
@@ -48,7 +48,7 @@ function trimTo140(body, url) {
 
 // カテゴリ別フォールバックhook（2行スタイル）
 const FALLBACK_HOOKS = {
-  beauty:    ['朝の肌カサカサすぎて萎える\nスキンケアしても意味ない気がしてた😇', '乾燥ひどい日、\n化粧ノリ終わるのほんと萎える'],
+  beauty:    ['朝の髪、\n湿気で広がるのほんと無理😇', '乾燥ひどい日、\n化粧ノリ終わるのほんと萎える'],
   household: ['部屋干し、\n乾いたと思ったらまだ湿ってる☔️', '台拭き、\nすぐびちゃびちゃになるの地味にしんどい'],
   kids:      ['子どもの靴、\n翌朝まだ湿ってる絶望👟', '子どもへのプレゼント、\n毎年何あげればいいかわからん😅'],
   food:      ['料理めんどい日、\n正直かなりある', '洗い物多いの、\n地味にしんどい'],
@@ -67,18 +67,18 @@ function fallbackPost(price, catchcopy, category = 'other') {
   return `${hook}\n\n${priceLine}`;
 }
 
-// 商品分析（score + category + pain + benefit + hooks を返す）
+// 商品分析（score + productType + scene + pain + benefit + hooks を返す）
 async function analyzeProduct(name, price, catchcopy, groqClient) {
   const prompt = `楽天商品をX向けにスコアリングしてJSON1行のみ返してください。説明文不要。
-商品:${name} ¥${Number(price).toLocaleString()} ${catchcopy || ''}
-{"score":0-100,"category":"beauty/household/kids/food/fashion/other","pain":"悩み15字以内","benefit":"帰宅後〜など生活変化20字以内","hook1":"状況あるある20字以内","hook1b":"補足感情20字以内","hook2":"状況あるある20字以内","hook2b":"補足感情20字以内"}
+商品名:${name} ¥${Number(price).toLocaleString()} ${catchcopy || ''}
+{"score":0-100,"category":"beauty/household/kids/food/fashion/other","productType":"商品の一般名称（例:ヘアオイル・除湿機・靴乾燥機）","scene":"この商品が必要な生活シーン20字以内","pain":"悩み15字以内","benefit":"使った後の生活変化20字以内","hook1":"状況あるある20字以内","hook1b":"補足感情20字以内","hook2":"状況あるある20字以内","hook2b":"補足感情20字以内"}
 高評価条件:ストレス解決/生活改善/子ども/ズボラ/季節感。70点未満=X向きでない。`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
     model: 'llama-3.1-8b-instant',
     temperature: 0.4,
-    max_tokens: 180,
+    max_tokens: 200,
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
@@ -89,17 +89,18 @@ async function analyzeProduct(name, price, catchcopy, groqClient) {
   if (!jsonMatch) throw new Error('分析JSONパース失敗');
   const parsed = JSON.parse(jsonMatch[0]);
 
-  const score    = typeof parsed.score === 'number' ? parsed.score : null;
-  const category = parsed.category || 'other';
-  const pain     = parsed.pain    || '';
-  const benefit  = parsed.benefit || '';
-  // hook を「1行目\n2行目」形式で組み立て
+  const score       = typeof parsed.score === 'number' ? parsed.score : null;
+  const category    = parsed.category    || 'other';
+  const productType = parsed.productType || '';
+  const scene       = parsed.scene       || '';
+  const pain        = parsed.pain        || '';
+  const benefit     = parsed.benefit     || '';
   const hooks = [
     parsed.hook1 && parsed.hook1b ? `${parsed.hook1}\n${parsed.hook1b}` : parsed.hook1,
     parsed.hook2 && parsed.hook2b ? `${parsed.hook2}\n${parsed.hook2b}` : parsed.hook2,
   ].filter(Boolean);
 
-  return { score, category, pain, benefit, hooks };
+  return { score, category, productType, scene, pain, benefit, hooks };
 }
 
 module.exports = async function handler(req, res) {
@@ -123,20 +124,23 @@ module.exports = async function handler(req, res) {
   const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
 
   // ── 商品分析 ──
-  let analysisScore    = null;
-  let analysisCategory = 'other';
-  let analysisPain     = '';
-  let analysisBenefit  = '';
-  let analysisHooks    = [];
+  let analysisScore       = null;
+  let analysisCategory    = 'other';
+  let analysisProductType = '';
+  let analysisScene       = '';
+  let analysisPain        = '';
+  let analysisBenefit     = '';
+  let analysisHooks       = [];
   try {
-    const result     = await analyzeProduct(name, price, catchcopy, groqClient);
-    analysisScore    = result.score;
-    analysisCategory = result.category;
-    analysisPain     = result.pain;
-    analysisBenefit  = result.benefit;
-    analysisHooks    = result.hooks;
-    console.log('[generate-post] 分析:', JSON.stringify({ analysisScore, analysisCategory, analysisPain, analysisBenefit }));
-    console.log('[generate-post] HOOKs:', analysisHooks);
+    const result        = await analyzeProduct(name, price, catchcopy, groqClient);
+    analysisScore       = result.score;
+    analysisCategory    = result.category;
+    analysisProductType = result.productType;
+    analysisScene       = result.scene;
+    analysisPain        = result.pain;
+    analysisBenefit     = result.benefit;
+    analysisHooks       = result.hooks;
+    console.log('[generate-post] 分析:', JSON.stringify({ analysisScore, analysisProductType, analysisScene, analysisPain, analysisBenefit }));
   } catch (err) {
     console.log('[generate-post] 分析スキップ（エラー）:', err.message);
   }
@@ -147,30 +151,33 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ success: false, skipped: true, score: analysisScore });
   }
 
-  // フォールバックhookを準備（分析hookがない場合）
-  const fallbackHooks = FALLBACK_HOOKS[analysisCategory] || FALLBACK_HOOKS.other;
-  const hookExamples  = analysisHooks.length > 0 ? analysisHooks : fallbackHooks;
+  const hookExamples = analysisHooks.length > 0
+    ? analysisHooks
+    : (FALLBACK_HOOKS[analysisCategory] || FALLBACK_HOOKS.other);
 
+  // 投稿プロンプト：商品名を渡さず productType+scene+pain+benefit のみで書かせる
   const prompt = `Xの独り言投稿を生成してください。URL・ハッシュタグ禁止。
-商品:${name} ¥${Number(price).toLocaleString()}
-この商品で解決される悩み:${analysisPain || '日常ストレス'}
-使った後の生活の変化:${analysisBenefit || '生活がラクになる'}
 
-【出力フォーマット】改行を守ること：
+【STEP1】この商品は「${analysisProductType || '生活雑貨'}」です。
+【STEP2】生活シーン:「${analysisScene || analysisPain || '日常のストレス'}」を想像してください。
+【STEP3】その人の本音の独り言として投稿文を書いてください。
+
+【絶対禁止】商品名・型番・ブランド名を文章に入れない。
+【絶対禁止】ECサイト説明・スペック読み上げ・レビュー口調。
+
+【出力フォーマット】
 （状況・あるある　20字以内）
 （補足の感情　20字以内）
 
-¥価格／（生活がどう変わるか　65字以内）
+¥${Number(price).toLocaleString()}／（「${analysisBenefit || '生活の変化'}」をどう表現するか　65字以内）
 
 【参考HOOKパターン】
 ${hookExamples.join('\n---\n')}
 
-【ルール】
-・1〜2行目は「${analysisPain || '日常ストレス'}」を感じている人の本音。商品名コピペ禁止。
-・¥の行:「${analysisBenefit || '生活の変化'}」がどう続くかを自然に書く。商品スペック禁止。
-・良い¥行:「帰宅後すぐ乾かせるのかなりラク」「ベタつかんのに保湿感かなり残る」
-・悪い¥行:「吸水性抜群」「高品質」「大人気」
-禁止ワード:神・最強・買わなきゃ損・話題・人気・高評価・おすすめ・ランキング`;
+【¥行ルール】
+良い:「帰宅後すぐ乾かせるのかなりラク」「ベタつかんのに保湿感かなり残る」「朝の支度が5分ラクになった」
+悪い:「吸水性抜群」「高品質」「大人気」「商品名がすごい」
+禁止:神・最強・買わなきゃ損・話題・人気・高評価・おすすめ・ランキング`;
 
   console.log('[generate-post] prompt length:', prompt.length);
 
