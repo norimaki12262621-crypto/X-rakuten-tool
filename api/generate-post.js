@@ -147,7 +147,7 @@ module.exports = async function handler(req, res) {
   const description = (rawDescription || '').replace(/[\r\n]+/g, ' ').slice(0, 100);
   console.log('[generate-post] processed:', JSON.stringify({ name, price, catchcopy, description, url }));
 
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
   if (!groqKey) return res.status(500).json({ success: false, error: 'GROQ_API_KEYが未設定' });
 
   const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });

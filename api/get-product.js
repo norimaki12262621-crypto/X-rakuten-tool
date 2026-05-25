@@ -6,7 +6,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
 
   function dedupeProductName(name) {
     let cleaned = (name || '').replace(/【[^】]*】/g, '').replace(/\[[^\]]*\]/g, '');
