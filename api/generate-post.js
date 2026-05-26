@@ -400,7 +400,7 @@ async function analyzeCategory(name, price, catchcopy, description, groqClient) 
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
-    model: 'llama-3.1-8b-instant',
+    model: process.env.GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
     temperature: 0.4,
     max_tokens: 200,
   });

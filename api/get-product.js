@@ -410,7 +410,7 @@ module.exports = async function handler(req, res) {
 
     const completion = await groqClient.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'llama-3.1-8b-instant',
+      model: process.env.GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
       temperature: 0.2,
       max_tokens: 80,
     });
