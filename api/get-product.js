@@ -1,6 +1,7 @@
 const Groq = require('groq-sdk');
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
+const { inferMacroCategory, normalizeMacroCategory, buildPost } = require('./_categories');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,355 +51,6 @@ module.exports = async function handler(req, res) {
     return postText;
   }
 
-  function pickBest(items) {
-    return items.slice().sort((a, b) => {
-      const sa = b.reviewAverage * 18 + Math.min(b.reviewCount / 8, 22);
-      const sb = a.reviewAverage * 18 + Math.min(a.reviewCount / 8, 22);
-      return sa - sb;
-    })[0] || items[0];
-  }
-
-  const CATEGORY_COPY = {
-    beauty: {
-      hooks: [
-        '朝の支度、\n髪まとまらないだけで詰む',
-        '乾燥ひどい日、\n化粧ノリ終わるの萎える',
-        'お風呂上がり、\nちゃんとケアする余力ほしい',
-      ],
-      benefits: [
-        '朝の支度がちょっとラクになる',
-        'ベタつきにくくて気分よく整う',
-        '毎日のケアを続けやすい',
-      ],
-    },
-    household: {
-      hooks: [
-        '部屋干し、\n乾いたと思ったらまだ湿ってる',
-        '家の小さいストレス、\n積み重なると地味にしんどい',
-        '片づけたはずなのに、\n生活感が残るのつらい',
-      ],
-      benefits: [
-        '家事のひっかかりがひとつ減る',
-        '置くだけでいつもの面倒が軽くなる',
-        '毎日使う場所が少し整う',
-      ],
-    },
-    kids: {
-      hooks: [
-        '子ども用品、\n必要になるタイミング急すぎ',
-        '子どもへのプレゼント、\n毎回けっこう悩む',
-        '朝のバタバタ、\n子ども関連でだいたい増える',
-      ],
-      benefits: [
-        '親の準備ストレスが少し減る',
-        '子どもも使いやすくて出番が増える',
-        '毎日の支度がちょっと回しやすい',
-      ],
-    },
-    food: {
-      hooks: [
-        '料理めんどい日、\n正直かなりある',
-        'ごはんの準備、\n考えるだけで疲れる日ある',
-        '洗い物多いの、\n地味にしんどい',
-      ],
-      benefits: [
-        '食卓の準備がかなりラクになる',
-        '忙しい日のごはん問題を助けてくれる',
-        '手間少なめでちゃんと満足感ある',
-      ],
-    },
-    fashion: {
-      hooks: [
-        'コーデ決まらない朝、\nちょい萎える',
-        '出かける前、\nなんか物足りない日ある',
-        '季節の服選び、\n毎年ちょっと迷う',
-      ],
-      benefits: [
-        'いつもの服に合わせやすい',
-        '出かける前の迷いが少し減る',
-        '季節感を足しやすい',
-      ],
-    },
-    other: {
-      hooks: [
-        'なんか使いにくいな、\nがずっと続いてた件。',
-        '小さい不便、\n放置するとずっと気になる',
-        'これ地味に困る、\nって場面けっこうある',
-      ],
-      benefits: [
-        'いつもの不便が少しラクになる',
-        '使うたびに小さく助かる',
-        '生活の引っかかりがひとつ減る',
-      ],
-    },
-  };
-
-  const TOPIC_COPY = [
-    {
-      pattern: /ラロッシュ|ポゼ|美容液|化粧水|乳液|クリーム|日焼け止め|uv|トーンアップ|下地|スキンケア|敏感肌|保湿/,
-      hooks: [
-        '肌の乾燥、\n夕方になるとけっこう気になる',
-        '朝のスキンケア、\n重いと続かないんよね',
-        '日中の肌、\nなんか守れてる感ほしい',
-      ],
-      benefits: [
-        '毎日の肌ケアに取り入れやすい',
-        'ベタつきにくくて朝も使いやすい',
-        '乾燥対策を続けやすい',
-      ],
-    },
-    {
-      pattern: /ヘア|髪|シャンプー|トリートメント|ヘアオイル|ドライヤー/,
-      hooks: [
-        '朝の髪、\nまとまらないだけで詰む',
-        '髪のパサつき、\n地味にテンション下がる',
-        'お風呂上がり、\n髪ケアまで手が回らん',
-      ],
-      benefits: [
-        '朝の支度がちょっとラクになる',
-        '髪のケアを続けやすい',
-        'まとまり感を足しやすい',
-      ],
-    },
-    {
-      pattern: /猫|ねこ|キャット|犬|いぬ|ドッグ|ペット|おやつ|フード|餌|ごはん/,
-      hooks: [
-        'ペットのごはん、\n切らすとほんと焦る',
-        'いつものフード、\nストックあるだけで安心',
-        'ペット用品、\n気づいたら減ってる',
-      ],
-      benefits: [
-        '毎日のごはん準備が少し安心',
-        'まとめて置けて買い足しがラク',
-        'いつものストック用にちょうどいい',
-      ],
-    },
-    {
-      pattern: /ヒーター|発熱|電熱|防寒|あったか|暖か|温熱|ベスト|毛布|カイロ/,
-      hooks: [
-        '寒い日の外出、\n着込んでもまだ寒い',
-        '朝の冷え込み、\nほんと動きたくなくなる',
-        '冬の作業、\n体が冷えるとしんどい',
-      ],
-      benefits: [
-        '寒い日の外出が少しラクになる',
-        '冷えやすい場面で使いやすい',
-        '外でも暖かさを足しやすい',
-      ],
-    },
-    {
-      pattern: /モバイルバッテリー|充電|バッテリー|急速充電|充電器|ケーブル/,
-      hooks: [
-        '外出中の充電切れ、\nあれ本当に焦る',
-        'スマホの残量、\n夕方に見るのこわい',
-        '旅行の日、\n充電まわりが不安すぎる',
-      ],
-      benefits: [
-        '外出先の電池切れ対策になる',
-        'バッグに入れておくと安心',
-        '移動中も充電しやすい',
-      ],
-    },
-    {
-      pattern: /だし|出汁|鰹|かつお|昆布|惣菜|肉|魚|米|スイーツ|お菓子|食品|冷凍|麺/,
-      hooks: [
-        'ごはん作る日、\n味つけ考えるの地味に大変',
-        '料理めんどい日、\nちゃんとおいしくしたい',
-        '毎日のごはん、\n手間は減らしたい',
-      ],
-      benefits: [
-        'いつもの料理に使いやすい',
-        '手間少なめで満足感を足せる',
-        'ごはん作りの助けになる',
-      ],
-    },
-  ];
-
-  const EXTRA_TOPIC_COPY = [
-    {
-      pattern: /母の日|父の日|敬老|誕生日|クリスマス|結婚祝い|出産祝い|卒業|入学|就職|昇進|記念日|バレンタイン|ホワイトデー|お年賀|ギフト|プレゼント|祝い/,
-      hooks: [
-        'プレゼント選び、\n外したくない時ほど迷う',
-        '贈り物って、\n実用的すぎても味気ない',
-        'ギフト探し、\n相手の顔が浮かぶやつ選びたい',
-      ],
-      benefits: [
-        'ちゃんと使えて気持ちも伝わる感じがちょうどいい',
-        '高すぎず安っぽくも見えないラインを狙える',
-        '悩みがちな贈り物候補に入れておきたい',
-      ],
-    },
-    {
-      pattern: /可愛い|かわいい|韓国|推し活|ぬいぐるみ|おもちゃ|フォトフレーム|アルバム|ポーチ|バッグ|アクセサリーケース|文房具|ステーショナリー|スマホケース|収納|ケース|入れ物/,
-      hooks: [
-        '机まわり、\n可愛いだけでちょっと機嫌戻る',
-        '小物って、\n雑に置くと一気に生活感出る',
-        '持ち歩くもの、\n見るたび少し気分上げたい',
-      ],
-      benefits: [
-        '散らかりがちな小物も見た目よくまとめやすい',
-        '実用感だけじゃなく気分までちゃんと上がる',
-        '普段使いしながら可愛さも足せるのがいい',
-      ],
-    },
-    {
-      pattern: /食器|皿|器|カップ|グラス|キッチン雑貨|調理器具|フライパン|鍋|包丁|まな板|保存容器/,
-      hooks: [
-        'キッチン用品、\n使いにくいと毎日じわじわ疲れる',
-        '料理のやる気、\n道具ひとつでけっこう変わる',
-        '洗い物まで考えると、\n使いやすさほんと大事',
-      ],
-      benefits: [
-        '毎日の料理と片づけの小さい面倒を減らせる',
-        '出しっぱなしでも見た目が荒れにくいのが助かる',
-        '自炊のハードルを少し下げてくれる',
-      ],
-    },
-    {
-      pattern: /お取り寄せ|スイーツ|お菓子|チョコ|ラーメン|麺|肉|ステーキ|海鮮|魚介|惣菜|だし|出汁|鰹|かつお|昆布|米|冷凍/,
-      hooks: [
-        '家で食べる楽しみ、\nひとつあるだけで週末が違う',
-        '外食までは面倒でも、\nおいしいものは食べたい',
-        'ごはん作る日、\n味つけ考えるの地味に大変',
-      ],
-      benefits: [
-        '家にいながらちょっと特別感のあるごはんにできる',
-        '忙しい日でも食卓の満足感を足しやすい',
-        '手間を増やさずちゃんとおいしい方向に寄せられる',
-      ],
-    },
-    {
-      pattern: /ラロッシュ|ポゼ|美容液|セラム|化粧水|乳液|クリーム|日焼け止め|uv|トーンアップ|下地|スキンケア|敏感肌|保湿/,
-      hooks: [
-        '肌の乾燥、\n夕方になると一気に気になる',
-        '朝のスキンケア、\n重いと結局続かないんよね',
-        '日中の肌、\nなんか守れてる感ほしい',
-      ],
-      benefits: [
-        '朝の支度に足しても重くなりにくいのが使いやすい',
-        '乾燥対策をちゃんと毎日続けたい人にちょうどいい',
-        '肌の調子が読めない日でも手に取りやすい',
-      ],
-    },
-    {
-      pattern: /ヘア|髪|シャンプー|トリートメント|ヘアオイル|ドライヤー/,
-      hooks: [
-        '朝の髪、\nまとまらないだけで一日ひきずる',
-        '髪のパサつき、\n地味にテンション下がる',
-        'お風呂上がり、\n髪ケアまで手が回らん',
-      ],
-      benefits: [
-        '朝の支度で髪にかける時間を少し減らせそう',
-        '毎日のヘアケアをがんばりすぎず続けやすい',
-        'まとまり感がほしい日に手に取りやすい',
-      ],
-    },
-    {
-      pattern: /インテリア|寝具|枕|布団|マットレス|照明|ラグ|カーテン|収納|掃除|洗濯|除湿|部屋干し/,
-      hooks: [
-        '部屋の小さい不満、\n毎日見るからじわじわ効く',
-        '寝る時間くらい、\nちゃんと気持ちよくしたい',
-        '片づけても、\n生活感が残るのちょっと嫌',
-      ],
-      benefits: [
-        '毎日いる場所のストレスをちゃんと減らせる',
-        '見た目と使いやすさをまとめて整えやすい',
-        '家で過ごす時間の満足感が少し上がる',
-      ],
-    },
-    {
-      pattern: /イヤホン|ヘッドフォン|ヘッドホン|ワイヤレス|モバイルバッテリー|充電|バッテリー|急速充電|充電器|ケーブル|家電|加湿器|扇風機|掃除機/,
-      hooks: [
-        '外出中の充電切れ、\nあれ本当に焦る',
-        '毎日使うガジェット、\n地味な不満ほど減らしたい',
-        '移動時間、\nちょっと快適にするだけで違う',
-      ],
-      benefits: [
-        '出先で困る場面を減らせる安心感がある',
-        '毎日使うものだから使い勝手の差がちゃんと出る',
-        '持っておくと小さいストレスを先回りできる',
-      ],
-    },
-    {
-      pattern: /ヒーター|発熱|電熱|防寒|あったか|暖か|温熱|ベスト|毛布|カイロ/,
-      hooks: [
-        '寒い日の外出、\n着込んでもまだ寒い',
-        '朝の冷え込み、\nほんと動きたくなくなる',
-        '冬の作業、\n体が冷えるとしんどい',
-      ],
-      benefits: [
-        '外でも暖かさを足せるから冬のしんどさが減りそう',
-        '冷えやすい場面で一枚あるとかなり安心できる',
-        '通勤や屋外作業の寒さ対策に使いやすい',
-      ],
-    },
-    {
-      pattern: /犬|いぬ|ドッグ|猫|ねこ|キャット|ペット|おやつ|フード|餌|ごはん/,
-      hooks: [
-        'ペットのごはん、\n切らすとほんと焦る',
-        'いつものフード、\nストックあるだけで安心',
-        'ペット用品、\n気づいたら減ってる',
-      ],
-      benefits: [
-        '毎日のごはん準備を慌てず回せるのが助かる',
-        'まとめて置けるから買い足し忘れ対策になる',
-        'いつものストック用にちょうどよくて安心感ある',
-      ],
-    },
-  ];
-
-
-  function pick(list) {
-    return list[Math.floor(Math.random() * list.length)];
-  }
-
-  function normalizeCategory(category) {
-    return CATEGORY_COPY[category] ? category : 'other';
-  }
-
-  function inferCategoryFromText(text) {
-    const source = text.toLowerCase();
-    if (/美容|コスメ|化粧|髪|ヘア|肌|保湿|メイク|シャンプー|オイル|ネイル/.test(source)) return 'beauty';
-    if (/掃除|収納|洗濯|乾燥|除湿|キッチン|台所|風呂|トイレ|部屋干し|家事/.test(source)) return 'household';
-    if (/子ども|子供|キッズ|ベビー|赤ちゃん|入園|入学|靴|おもちゃ|知育/.test(source)) return 'kids';
-    if (/食品|惣菜|肉|魚|米|スイーツ|お菓子|料理|ごはん|冷凍|麺|珈琲|コーヒー/.test(source)) return 'food';
-    if (/服|バッグ|財布|靴|帽子|ワンピ|トップス|パンツ|コーデ|ファッション|アクセ/.test(source)) return 'fashion';
-    return 'other';
-  }
-
-  function selectCopy(sourceText, category = 'other') {
-    const source = sourceText.toLowerCase();
-    return EXTRA_TOPIC_COPY.find(({ pattern }) => pattern.test(source))
-      || TOPIC_COPY.find(({ pattern }) => pattern.test(source))
-      || CATEGORY_COPY[normalizeCategory(category)];
-  }
-
-  function selectNudge(sourceText, category = 'other') {
-    const source = sourceText.toLowerCase();
-    const rules = [
-      [/母の日|父の日|敬老|誕生日|クリスマス|結婚祝い|出産祝い|卒業|入学|就職|昇進|記念日|ギフト|プレゼント|祝い/, ['ちゃんと考えた感じが出るのも大事。', '無難すぎないけど使える、この塩梅がいい。']],
-      [/可愛い|かわいい|韓国|推し活|ぬいぐるみ|ポーチ|文房具|スマホケース|収納|ケース/, ['見える場所に置けるの、地味に大きい。', '毎日目に入るものほど気分で選びたい。']],
-      [/お取り寄せ|スイーツ|お菓子|ラーメン|肉|ステーキ|海鮮|魚介|惣菜|だし|出汁|米|冷凍/, ['冷蔵庫にあると未来の自分が助かる。', '外に出ずに楽しみ作れるの、かなり強い。']],
-      [/美容液|化粧水|日焼け止め|スキンケア|保湿|ヘア|髪|シャンプー|トリートメント/, ['毎朝使うものほど、軽さって大事。', '続けやすいケアが結局いちばん助かる。']],
-      [/インテリア|寝具|枕|布団|収納|掃除|洗濯|部屋干し|キッチン|調理器具/, ['毎日目に入る場所だから妥協したくない。', '家の中のストレス減ると、思ったより効く。']],
-      [/イヤホン|ヘッドフォン|モバイルバッテリー|充電|家電|ヒーター|発熱|防寒/, ['バッグに入れておく安心感、かなり大きい。', '毎日使うものほど不満を減らしたい。']],
-      [/犬|猫|ペット|おやつ|フード|餌|ごはん/, ['ストックあるだけで気持ちがラク。', '切らす前に置いておきたい枠。']],
-    ];
-    const match = rules.find(([pattern]) => pattern.test(source));
-    if (match) return pick(match[1]);
-    if (category === 'beauty') return pick(['続けやすいケアが結局いちばん助かる。', '毎朝使うものほど、軽さって大事。']);
-    if (category === 'food') return pick(['外に出ずに楽しみ作れるの、かなり強い。', '忙しい日の逃げ道になるのがいい。']);
-    return pick(['こういう小さい快適さ、あとで効く。', '地味だけど、あると生活が少し整う。']);
-  }
-
-  function buildPost(item, category = 'other', sourceText = '') {
-    const copy = selectCopy(sourceText, category);
-    const hook = pick(copy.hooks);
-    const nudge = selectNudge(sourceText, category);
-    const benefit = pick(copy.benefits);
-    return `${hook}\n${nudge}\n\n¥${Number(item.price).toLocaleString()}／${benefit}`;
-  }
-
   function jsScore(item) {
     let score = 0;
     score += Math.min((item.reviewAverage / 5) * 25, 25);
@@ -438,17 +90,16 @@ module.exports = async function handler(req, res) {
     return JSON.parse(jsonMatch[0]);
   }
 
-  function createGroqClient(apiKey) {
-    return new Groq({ apiKey, timeout: 15000 });
-  }
-
   async function analyzeCategory(item, groqClient) {
-    const prompt = `楽天商品を次のカテゴリのどれか1つに分類し、JSONのみ返してください。説明文不要。
-カテゴリ: beauty / household / kids / food / fashion / other
+    const prompt = `楽天商品を次の大カテゴリのどれか1つに分類し、JSONのみ返してください。説明文不要。
+カテゴリ: beauty / rainy / gift / home / gadget / pet / food / kids / fashion / other
+beauty=美容・スキンケア・ヘアケア / rainy=傘・防水・梅雨 / gift=ギフト・プレゼント・記念日
+home=収納・掃除・キッチン / gadget=家電・充電・イヤホン / pet=ペット用品
+food=食品・グルメ / kids=子ども・ベビー / fashion=服・バッグ
 商品名:${item.name}
 キャッチコピー:${item.catchcopy || ''}
 価格:¥${Number(item.price).toLocaleString()}
-{"category":"beauty/household/kids/food/fashion/other"}`;
+{"category":"beauty/rainy/gift/home/gadget/pet/food/kids/fashion/other"}`;
 
     const completion = await groqClient.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
@@ -461,8 +112,7 @@ module.exports = async function handler(req, res) {
     console.log('[get-product] category raw:', raw);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('カテゴリJSONパース失敗');
-    const parsed = JSON.parse(jsonMatch[0]);
-    return normalizeCategory(parsed.category);
+    return normalizeMacroCategory(JSON.parse(jsonMatch[0]).category);
   }
 
   async function shortenUrl(rawUrl) {
@@ -512,12 +162,12 @@ module.exports = async function handler(req, res) {
       .slice(0, 10);
 
     let selected = jsSorted[0];
-    let category = inferCategoryFromText(`${genre} ${selected.name} ${selected.catchcopy}`);
+    let category = inferMacroCategory(`${genre} ${selected.name} ${selected.catchcopy}`);
 
     try {
       if (groqKey) {
-        const groqClient = createGroqClient(groqKey);
-        // SMART_MODEL でスコアリング → 70pt以上でフィルタ → 最高スコアを選択
+        const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
+        // SMART_MODEL でXバズ適性スコアリング → 70pt以上でフィルタ
         const scores = await smartScore(jsSorted, groqClient);
         const passed = scores.filter(s => s.s >= 70).sort((a, b) => b.s - a.s);
         if (passed.length > 0) {
@@ -532,8 +182,9 @@ module.exports = async function handler(req, res) {
       console.log('[get-product] AI scoring fallback:', err.message);
     }
 
+    const sourceText = `${genre} ${selected.name} ${selected.catchcopy}`;
     const reason = `JSスコア${selected._jsScore?.toFixed(0) ?? '?'}pt・レビュー${selected.reviewAverage}(${selected.reviewCount}件)で自動選択`;
-    const postBody = buildPost(selected, category, `${genre} ${selected.name} ${selected.catchcopy}`);
+    const postBody = buildPost(selected.price, sourceText);
     const shortUrl = await shortenUrl(selected.url);
     const postText = trimTo140(postBody, shortUrl);
 
@@ -543,10 +194,11 @@ module.exports = async function handler(req, res) {
       reason,
       postText,
       category,
+      jsScore: selected._jsScore ?? null,
     });
 
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, error: err.message });
   }
-}
+};

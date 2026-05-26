@@ -331,7 +331,7 @@ function applyHook(hook) {
   ta.focus();
 }
 
-async function loadHookAnalysis(name, price, catchcopy, description) {
+async function loadHookAnalysis(name, price, catchcopy, description, jsScore) {
   try {
     const res = await fetch('/api/hook-generator', {
       method: 'POST',
@@ -340,7 +340,7 @@ async function loadHookAnalysis(name, price, catchcopy, description) {
     });
     const data = await res.json();
     if (data.success) {
-      showAnalysis({ xScore: data.xScore, emotion: data.emotion, pain: data.pain, season: data.season, angle: data.angle, hooks: data.hooks });
+      showAnalysis({ xScore: data.xScore, jsScore: jsScore ?? null, emotion: data.emotion, pain: data.pain, season: data.season, angle: data.angle, hooks: data.hooks });
     }
   } catch (e) {
     console.warn('[hook-generator] failed:', e.message);
@@ -564,7 +564,7 @@ async function fetchProduct() {
       updateCount();
       // ジャンルタブは hook-generator を別途呼び出し
       showAnalysisLoading();
-      loadHookAnalysis(p.name, p.price, p.catchcopy || '', '');
+      loadHookAnalysis(p.name, p.price, p.catchcopy || '', '', data.jsScore ?? null);
     }
   } catch(e) {
     errEl.textContent = '⚠️ ' + e.message;
