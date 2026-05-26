@@ -1,3 +1,7 @@
+const Groq = require('groq-sdk');
+const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
+const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -395,8 +399,46 @@ module.exports = async function handler(req, res) {
     return `${hook}\n${nudge}\n\n¥${Number(item.price).toLocaleString()}／${benefit}`;
   }
 
+  function jsScore(item) {
+    let score = 0;
+    score += Math.min((item.reviewAverage / 5) * 25, 25);
+    score += Math.min(item.reviewCount / 10, 20);
+    const p = Number(item.price);
+    if (p >= 500 && p <= 8000) score += 15;
+    else if (p >= 300 && p <= 15000) score += 8;
+    if (/嬉しい|感動|ときめく|最高|幸せ|楽しい|かわいい|可愛い|癒し|ほっこり|温かい|やさしい/.test(item.name + item.catchcopy)) score += 15;
+    if (/バズ|話題|人気|おすすめ|注目|神|爆売|トレンド|定番|リピ|リピート/.test(item.name + item.catchcopy)) score += 15;
+    if (/春|夏|秋|冬|梅雨|旬|限定|新生活|母の日|父の日|クリスマス|バレンタイン|お歳暮|お中元/.test(item.name + item.catchcopy)) score += 10;
+    return Math.min(score, 100);
+  }
+
+  async function smartScore(items, groqClient) {
+    const payload = items.map((it, i) => ({
+      i,
+      n: it.name.slice(0, 40),
+      c: (it.catchcopy || '').slice(0, 30),
+      p: it.price,
+    }));
+    const prompt = `楽天商品リストをXバズ適性でスコアリング。JSONのみ返せ。説明不要。
+各商品を0-100でスコア。評価軸:スクロール止まり・共感・感情・悩み解決・衝動価格帯・独り言変換しやすさ
+商品:${JSON.stringify(payload)}
+返却形式:[{"i":0,"s":75},{"i":1,"s":82},...]`;
+
+    const completion = await groqClient.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: SMART_MODEL,
+      temperature: 0.3,
+      max_tokens: 150,
+    });
+
+    const raw = (completion.choices[0]?.message?.content || '').trim();
+    console.log('[get-product] smartScore raw:', raw);
+    const jsonMatch = raw.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) throw new Error('smartScore JSONパース失敗');
+    return JSON.parse(jsonMatch[0]);
+  }
+
   function createGroqClient(apiKey) {
-    const Groq = require('groq-sdk');
     return new Groq({ apiKey, timeout: 15000 });
   }
 
@@ -410,7 +452,7 @@ module.exports = async function handler(req, res) {
 
     const completion = await groqClient.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: process.env.GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
+      model: FAST_MODEL,
       temperature: 0.2,
       max_tokens: 80,
     });
@@ -463,18 +505,34 @@ module.exports = async function handler(req, res) {
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
 
-    const selected = pickBest(items);
+    // JS一次スコアリング → 上位10件
+    const jsSorted = items
+      .map(it => ({ ...it, _jsScore: jsScore(it) }))
+      .sort((a, b) => b._jsScore - a._jsScore)
+      .slice(0, 10);
+
+    let selected = jsSorted[0];
     let category = inferCategoryFromText(`${genre} ${selected.name} ${selected.catchcopy}`);
+
     try {
       if (groqKey) {
         const groqClient = createGroqClient(groqKey);
+        // SMART_MODEL でスコアリング → 70pt以上でフィルタ → 最高スコアを選択
+        const scores = await smartScore(jsSorted, groqClient);
+        const passed = scores.filter(s => s.s >= 70).sort((a, b) => b.s - a.s);
+        if (passed.length > 0) {
+          selected = jsSorted[passed[0].i];
+          console.log('[get-product] SMART_MODEL選択: index', passed[0].i, 'score', passed[0].s);
+        } else {
+          console.log('[get-product] 70pt以上なし、JS最上位を使用');
+        }
         category = await analyzeCategory(selected, groqClient);
       }
     } catch (err) {
-      console.log('[get-product] category fallback:', err.message);
+      console.log('[get-product] AI scoring fallback:', err.message);
     }
 
-    const reason = `レビュー評価${selected.reviewAverage}・${selected.reviewCount}件で自動選択`;
+    const reason = `JSスコア${selected._jsScore?.toFixed(0) ?? '?'}pt・レビュー${selected.reviewAverage}(${selected.reviewCount}件)で自動選択`;
     const postBody = buildPost(selected, category, `${genre} ${selected.name} ${selected.catchcopy}`);
     const shortUrl = await shortenUrl(selected.url);
     const postText = trimTo140(postBody, shortUrl);

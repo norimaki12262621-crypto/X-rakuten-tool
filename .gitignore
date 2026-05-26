@@ -4,3 +4,4 @@
 !.env.example
 X-rakuten-tool/
 node_modules/
+logs/posts.json

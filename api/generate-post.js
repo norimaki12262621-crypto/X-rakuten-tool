@@ -1,15 +1,6 @@
-// api/generate-post.js
-// 投稿フォーマット（3〜4行）:
-//   1行目: 状況・あるある
-//   2行目: 補足の感情
-//   (空行)
-//   4行目: ¥価格／生活の変化
-//   5行目: 短縮URL
-// Twitter 換算 140 字以内をサーバー側で保証
-//
-// 処理フロー:
-//   1. Groq でカテゴリだけ判定
-//   2. カテゴリ別 hook/benefit 辞書から投稿本文を生成
+const Groq = require('groq-sdk');
+const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
+const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 
 // SEOノイズ除去
 function cleanProductName(name = '') {
@@ -385,7 +376,6 @@ function buildPost(price, category = 'other', sourceText = '') {
 }
 
 function createGroqClient(apiKey) {
-  const Groq = require('groq-sdk');
   return new Groq({ apiKey, timeout: 15000 });
 }
 
@@ -400,9 +390,9 @@ async function analyzeCategory(name, price, catchcopy, description, groqClient) 
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
-    model: process.env.GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
+    model: FAST_MODEL,
     temperature: 0.4,
-    max_tokens: 200,
+    max_tokens: 80,
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
@@ -413,6 +403,42 @@ async function analyzeCategory(name, price, catchcopy, description, groqClient) 
   if (!jsonMatch) throw new Error('カテゴリJSONパース失敗');
   const parsed = JSON.parse(jsonMatch[0]);
   return normalizeCategory(parsed.category);
+}
+
+async function smartAnalyze(name, price, catchcopy, groqClient) {
+  const prompt = `楽天商品のXバズ適性を判定。JSONのみ返せ。説明不要。
+商品:${name.slice(0, 40)}
+CC:${(catchcopy || '').slice(0, 30)}
+¥${Number(price).toLocaleString()}
+スコア0-100+独り言風フック1行(商品名コピペ禁止)
+{"score":75,"hook":"財布の中身、気づいたら減ってる😅"}`;
+
+  const completion = await groqClient.chat.completions.create({
+    messages: [{ role: 'user', content: prompt }],
+    model: SMART_MODEL,
+    temperature: 0.6,
+    max_tokens: 100,
+  });
+
+  const raw = (completion.choices[0]?.message?.content || '').trim();
+  console.log('[generate-post] smartAnalyze raw:', raw);
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('smartAnalyze JSONパース失敗');
+  return JSON.parse(jsonMatch[0]);
+}
+
+function savePostLog(entry) {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const logPath = path.join(__dirname, '../logs/posts.json');
+    let logs = [];
+    try { logs = JSON.parse(fs.readFileSync(logPath, 'utf8')); } catch {}
+    logs.push(entry);
+    fs.writeFileSync(logPath, JSON.stringify(logs, null, 2));
+  } catch {
+    console.log('[generate-post] log:', JSON.stringify(entry));
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -432,21 +458,46 @@ module.exports = async function handler(req, res) {
 
   const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
   let category = inferCategoryFromText(`${name} ${catchcopy} ${description}`);
+  let smartResult = null;
+
   try {
     if (groqKey) {
       const groqClient = createGroqClient(groqKey);
       category = await analyzeCategory(name, price, catchcopy, description, groqClient);
+      smartResult = await smartAnalyze(name, price, catchcopy, groqClient);
+      console.log('[generate-post] smartScore:', smartResult?.score);
     }
   } catch (err) {
-    console.log('[generate-post] category fallback:', err.message);
+    console.log('[generate-post] AI fallback:', err.message);
   }
 
-  const body = buildPost(price, category, `${name} ${catchcopy} ${description}`);
+  let body;
+  let usedSmartHook = false;
+  const sourceText = `${name} ${catchcopy} ${description}`;
+  if (smartResult && smartResult.score >= 70 && smartResult.hook) {
+    const nudge = selectNudge(sourceText, category);
+    const benefit = pick(selectCopy(sourceText, category).benefits);
+    body = `${smartResult.hook}\n${nudge}\n\n¥${Number(price).toLocaleString()}／${benefit}`;
+    usedSmartHook = true;
+  } else {
+    body = buildPost(price, category, sourceText);
+  }
+
   const postText = trimTo140(body, url);
+  savePostLog({
+    ts: new Date().toISOString(),
+    name: name.slice(0, 30),
+    score: smartResult?.score ?? null,
+    category,
+    usedSmartHook,
+    chars: twitterCount(postText),
+  });
+
   return res.status(200).json({
     success: true,
     postText,
     charCount: twitterCount(postText),
     category,
+    score: smartResult?.score ?? null,
   });
 };
