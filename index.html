@@ -68,6 +68,24 @@
   .btn-save-token:hover { background: #1279a8; }
   .token-hint { font-size: 11px; color: #aaa; margin-top: 6px; }
   .token-saved { font-size: 12px; color: #168BBF; margin-top: 6px; display: none; }
+
+  /* 感情分析パネル */
+  .analysis-panel { background: #fafafa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .analysis-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .analysis-row:last-child { margin-bottom: 0; }
+  .score-badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; white-space: nowrap; }
+  .score-js { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+  .score-ai { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+  .analysis-tag { padding: 3px 10px; border-radius: 20px; font-size: 12px; white-space: nowrap; }
+  .tag-emotion { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+  .tag-pain { background: #fce4ec; color: #880e4f; border: 1px solid #f48fb1; }
+  .tag-season { background: #e8eaf6; color: #283593; border: 1px solid #9fa8da; }
+  .tag-angle { background: #f3e5f5; color: #4a148c; border: 1px solid #ce93d8; }
+  .tag-loading { background: #f5f5f5; color: #bbb; border: 1px solid #e0e0e0; font-style: italic; }
+  .hook-list-label { font-size: 11px; font-weight: bold; color: #888; margin-bottom: 6px; margin-top: 2px; }
+  .hook-item { padding: 8px 11px; border: 1px solid #e0e0e0; border-radius: 6px; font-size: 13px; cursor: pointer; margin-bottom: 5px; line-height: 1.65; background: #fff; white-space: pre-line; transition: border-color 0.15s, background 0.15s; }
+  .hook-item:hover { background: #f0f4ff; border-color: #7aa3e8; }
+  .hook-item:last-child { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -218,6 +236,17 @@
     </div>
   </div>
   <div class="reason" id="prod-reason"></div>
+
+  <!-- 感情分析パネル -->
+  <div class="analysis-panel" id="analysis-panel" style="display:none;">
+    <div class="analysis-row" id="analysis-scores"></div>
+    <div class="analysis-row" id="analysis-tags"></div>
+    <div id="hook-list-wrap" style="display:none;">
+      <div class="hook-list-label">HOOK候補（クリックで先頭に反映）</div>
+      <div id="hook-list"></div>
+    </div>
+  </div>
+
   <div class="result-label">投稿テキスト（編集可能）</div>
   <textarea id="post-text" oninput="updateCount()"></textarea>
   <div id="char-count">0 / 280</div>
@@ -230,14 +259,96 @@
 
 <script>
 let currentTab = 'url';
+let currentPostUrl = ''; // フック反映時にURL再結合するため保持
 
-// Buffer token persistence
 window.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('buffer_access_token');
-  if (saved) {
-    document.getElementById('buffer-token').value = saved;
-  }
+  if (saved) document.getElementById('buffer-token').value = saved;
 });
+
+// ─── 感情分析パネル ──────────────────────────────────
+function showAnalysisLoading() {
+  const panel = document.getElementById('analysis-panel');
+  panel.style.display = 'block';
+  document.getElementById('analysis-scores').innerHTML = '<span class="score-badge tag-loading">分析中...</span>';
+  document.getElementById('analysis-tags').innerHTML = '';
+  document.getElementById('hook-list-wrap').style.display = 'none';
+}
+
+function showAnalysis({ xScore, jsScore, emotion, pain, season, angle, hooks }) {
+  const panel = document.getElementById('analysis-panel');
+  panel.style.display = 'block';
+
+  // スコアバッジ
+  const scoresEl = document.getElementById('analysis-scores');
+  scoresEl.innerHTML = '';
+  if (jsScore != null) {
+    scoresEl.insertAdjacentHTML('beforeend', `<span class="score-badge score-js">JS ${Math.round(jsScore)}pt</span>`);
+  }
+  if (xScore != null) {
+    scoresEl.insertAdjacentHTML('beforeend', `<span class="score-badge score-ai">X適性 ${xScore}pt</span>`);
+  }
+
+  // 感情タグ
+  const tagsEl = document.getElementById('analysis-tags');
+  tagsEl.innerHTML = '';
+  if (emotion) tagsEl.insertAdjacentHTML('beforeend', `<span class="analysis-tag tag-emotion">😤 ${emotion}</span>`);
+  if (pain)    tagsEl.insertAdjacentHTML('beforeend', `<span class="analysis-tag tag-pain">💭 ${pain}</span>`);
+  if (season)  tagsEl.insertAdjacentHTML('beforeend', `<span class="analysis-tag tag-season">🗓 ${season}</span>`);
+  if (angle)   tagsEl.insertAdjacentHTML('beforeend', `<span class="analysis-tag tag-angle">✏️ ${angle}</span>`);
+
+  // HOOK候補
+  const hookWrap = document.getElementById('hook-list-wrap');
+  const hookList = document.getElementById('hook-list');
+  if (hooks && hooks.length) {
+    hookList.innerHTML = '';
+    hooks.forEach(h => {
+      const el = document.createElement('div');
+      el.className = 'hook-item';
+      el.textContent = h;
+      el.addEventListener('click', () => applyHook(h));
+      hookList.appendChild(el);
+    });
+    hookWrap.style.display = 'block';
+  } else {
+    hookWrap.style.display = 'none';
+  }
+}
+
+function applyHook(hook) {
+  const ta = document.getElementById('post-text');
+  const current = ta.value;
+  // 投稿文の先頭からURL直前まで取得してHOOKに差し替え
+  const urlMatch = current.match(/https?:\/\/\S+/);
+  if (urlMatch) {
+    const url = urlMatch[0];
+    const rest = current.slice(current.indexOf(url));
+    ta.value = `${hook}\n\n${rest}`;
+  } else {
+    ta.value = hook + '\n\n' + current;
+  }
+  updateCount();
+  ta.focus();
+}
+
+async function loadHookAnalysis(name, price, catchcopy, description) {
+  try {
+    const res = await fetch('/api/hook-generator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, price, catchcopy: catchcopy || '', description: description || '' }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showAnalysis({ xScore: data.xScore, emotion: data.emotion, pain: data.pain, season: data.season, angle: data.angle, hooks: data.hooks });
+    }
+  } catch (e) {
+    console.warn('[hook-generator] failed:', e.message);
+    document.getElementById('analysis-panel').style.display = 'none';
+  }
+}
+
+// ─────────────────────────────────────────────────────
 
 async function copyPostText() {
   const text = document.getElementById('post-text').value;
@@ -326,6 +437,7 @@ function switchTab(tab) {
     el.classList.toggle('active', (i === 0 && tab === 'url') || (i === 1 && tab === 'genre'));
   });
   document.getElementById('result').style.display = 'none';
+  document.getElementById('analysis-panel').style.display = 'none';
   document.getElementById('err-msg').classList.remove('on');
 }
 
@@ -402,16 +514,19 @@ async function fetchProduct() {
         if (shrData.shortUrl) affUrl = shrData.shortUrl;
       } catch {}
 
-      // Step2: Gemini で 140 字投稿文を生成
+      // Step2: 投稿文生成（感情分析含む）
+      currentPostUrl = affUrl;
+      document.getElementById('analysis-panel').style.display = 'none';
       try {
         const postBody = {
-            name: matched.itemName,
-            price: matched.itemPrice,
-            catchcopy: matched.catchcopy || '',
-            description: matched.itemCaption || '',
-            url: affUrl,
-          };
+          name: matched.itemName,
+          price: matched.itemPrice,
+          catchcopy: matched.catchcopy || '',
+          description: matched.itemCaption || '',
+          url: affUrl,
+        };
         console.log('[generate-post] body:', JSON.stringify(postBody));
+        showAnalysisLoading();
         const postRes = await fetch('/api/generate-post', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -420,9 +535,13 @@ async function fetchProduct() {
         const postData = await postRes.json();
         document.getElementById('post-text').value = postData.postText ||
           `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
+        if (postData.success) {
+          showAnalysis({ xScore: postData.xScore, emotion: postData.emotion, pain: postData.pain, season: postData.season, angle: postData.angle, hooks: postData.hooks });
+        }
       } catch {
         document.getElementById('post-text').value =
           `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
+        document.getElementById('analysis-panel').style.display = 'none';
       }
       updateCount();
     } else {
@@ -440,8 +559,12 @@ async function fetchProduct() {
       document.getElementById('prod-shop').textContent = p.shop || '';
       document.getElementById('prod-reason').textContent = data.reason ? '💡 ' + data.reason : '';
       document.getElementById('post-text').value = data.postText;
+      currentPostUrl = p.url || '';
       document.getElementById('result').style.display = 'block';
       updateCount();
+      // ジャンルタブは hook-generator を別途呼び出し
+      showAnalysisLoading();
+      loadHookAnalysis(p.name, p.price, p.catchcopy || '', '');
     }
   } catch(e) {
     errEl.textContent = '⚠️ ' + e.message;

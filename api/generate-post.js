@@ -372,7 +372,7 @@ function buildPost(price, category = 'other', sourceText = '') {
   const nudge = selectNudge(sourceText, category);
   const benefit = pick(copy.benefits);
   const priceStr = `¥${Number(price).toLocaleString()}`;
-  return `${hook}\n${nudge}\n\n${priceStr}／${benefit}`;
+  return `${hook}\n\n${nudge}\n\n${priceStr}／${benefit}`;
 }
 
 function createGroqClient(apiKey) {
@@ -405,23 +405,37 @@ async function analyzeCategory(name, price, catchcopy, description, groqClient) 
   return normalizeCategory(parsed.category);
 }
 
-async function smartAnalyze(name, price, catchcopy, groqClient) {
-  const prompt = `楽天商品のXバズ適性を判定。JSONのみ返せ。説明不要。
-商品:${name.slice(0, 40)}
-CC:${(catchcopy || '').slice(0, 30)}
+async function smartAnalyze(name, price, catchcopy, description, groqClient) {
+  const src = `${(name || '').slice(0, 40)} ${(catchcopy || '').slice(0, 30)}`.trim();
+  const desc = (description || '').slice(0, 80);
+
+  const prompt = `楽天商品のX投稿向け感情分析。JSONのみ返せ。説明文不要。
+商品:${src}
+説明:${desc}
 ¥${Number(price).toLocaleString()}
-スコア0-100+独り言風フック1行(商品名コピペ禁止)
-{"score":75,"hook":"財布の中身、気づいたら減ってる😅"}`;
+
+禁止:楽天で人気/高評価/今話題/購入はこちら/説明口調/綺麗すぎる文章
+重視:本音/あるある/悩み/共感/人間っぽさ/少し雑なリアル感
+
+出力:
+- hooks:Xで流れてくる独り言風HOOK×5案(商品名コピペ禁止/\\n改行OK/各30字以内)
+- emotion:感情タグ(10字以内)
+- pain:悩みタグ(10字以内)
+- season:季節タグ(8字以内)
+- angle:投稿切り口(10字以内)
+- xScore:Xバズ適性0-100
+
+{"hooks":["...\\n...","...","...","...","..."],"emotion":"...","pain":"...","season":"...","angle":"...","xScore":78}`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
     model: SMART_MODEL,
-    temperature: 0.6,
-    max_tokens: 100,
+    temperature: 0.85,
+    max_tokens: 450,
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
-  console.log('[generate-post] smartAnalyze raw:', raw);
+  console.log('[generate-post] smartAnalyze raw:', raw.slice(0, 300));
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('smartAnalyze JSONパース失敗');
   return JSON.parse(jsonMatch[0]);
@@ -458,14 +472,14 @@ module.exports = async function handler(req, res) {
 
   const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
   let category = inferCategoryFromText(`${name} ${catchcopy} ${description}`);
-  let smartResult = null;
+  let hookAnalysis = null;
 
   try {
     if (groqKey) {
       const groqClient = createGroqClient(groqKey);
       category = await analyzeCategory(name, price, catchcopy, description, groqClient);
-      smartResult = await smartAnalyze(name, price, catchcopy, groqClient);
-      console.log('[generate-post] smartScore:', smartResult?.score);
+      hookAnalysis = await smartAnalyze(name, price, catchcopy, description, groqClient);
+      console.log('[generate-post] xScore:', hookAnalysis?.xScore);
     }
   } catch (err) {
     console.log('[generate-post] AI fallback:', err.message);
@@ -474,10 +488,12 @@ module.exports = async function handler(req, res) {
   let body;
   let usedSmartHook = false;
   const sourceText = `${name} ${catchcopy} ${description}`;
-  if (smartResult && smartResult.score >= 70 && smartResult.hook) {
+
+  if (hookAnalysis && hookAnalysis.xScore >= 70 && hookAnalysis.hooks?.length) {
+    const mainHook = hookAnalysis.hooks[0];
     const nudge = selectNudge(sourceText, category);
     const benefit = pick(selectCopy(sourceText, category).benefits);
-    body = `${smartResult.hook}\n${nudge}\n\n¥${Number(price).toLocaleString()}／${benefit}`;
+    body = `${mainHook}\n\n${nudge}\n\n¥${Number(price).toLocaleString()}／${benefit}`;
     usedSmartHook = true;
   } else {
     body = buildPost(price, category, sourceText);
@@ -487,7 +503,7 @@ module.exports = async function handler(req, res) {
   savePostLog({
     ts: new Date().toISOString(),
     name: name.slice(0, 30),
-    score: smartResult?.score ?? null,
+    xScore: hookAnalysis?.xScore ?? null,
     category,
     usedSmartHook,
     chars: twitterCount(postText),
@@ -498,6 +514,11 @@ module.exports = async function handler(req, res) {
     postText,
     charCount: twitterCount(postText),
     category,
-    score: smartResult?.score ?? null,
+    xScore: hookAnalysis?.xScore ?? null,
+    hooks: Array.isArray(hookAnalysis?.hooks) ? hookAnalysis.hooks : [],
+    emotion: hookAnalysis?.emotion || '',
+    pain: hookAnalysis?.pain || '',
+    season: hookAnalysis?.season || '',
+    angle: hookAnalysis?.angle || '',
   });
 };
