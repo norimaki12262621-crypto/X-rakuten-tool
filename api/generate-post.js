@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
-const { pick, inferMacroCategory, normalizeMacroCategory, selectCopy, selectNudge, buildPost } = require('./_categories');
+const { pick, inferMacroCategory, normalizeMacroCategory, selectCopy, selectScene, buildPost } = require('./_categories');
 
 function cleanProductName(name = '') {
   return name
@@ -149,9 +149,9 @@ module.exports = async function handler(req, res) {
 
   if (hookAnalysis && hookAnalysis.xScore >= 70 && hookAnalysis.hooks?.length) {
     const mainHook = hookAnalysis.hooks[0];
-    const nudge = selectNudge(sourceText);
-    const benefit = pick(selectCopy(sourceText).benefits);
-    body = `${mainHook}\n\n${nudge}\n\n¥${Number(price).toLocaleString()}／${benefit}`;
+    const scene = selectScene(sourceText);
+    const echo  = pick(selectCopy(sourceText).echoes);
+    body = `${mainHook}\n\n${scene}\n\n¥${Number(price).toLocaleString()}／${echo}`;
     usedSmartHook = true;
   } else {
     body = buildPost(price, sourceText);
