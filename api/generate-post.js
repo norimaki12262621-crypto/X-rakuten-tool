@@ -38,14 +38,15 @@ function createGroqClient(apiKey) {
 
 async function analyzeCategory(name, price, catchcopy, groqClient) {
   const prompt = `楽天商品を次の大カテゴリのどれか1つに分類し、JSONのみ返してください。説明文不要。
-カテゴリ: beauty / rainy / gift / home / gadget / pet / food / kids / fashion / other
-beauty=美容・スキンケア・ヘアケア / rainy=傘・防水・梅雨 / gift=ギフト・プレゼント・記念日
-home=収納・掃除・キッチン / gadget=家電・充電・イヤホン / pet=ペット用品
-food=食品・グルメ / kids=子ども・ベビー / fashion=服・バッグ
+カテゴリ: beauty/rainy/gift_safe/gift_luxury/gift_fun/gift_emotional/gift_practical/home/gadget/pet/food/kids/fashion/other
+gift_safe=無難定番ギフト / gift_luxury=高級贅沢ギフト(高級フルーツ・ワイン・和牛・カニ等) / gift_fun=面白ネタギフト
+gift_emotional=気持ち伝わる(名入れ・花束等) / gift_practical=実用消耗品ギフト(タオル・コーヒー・入浴剤等)
+beauty=美容ヘアケア / rainy=傘防水梅雨 / home=収納掃除キッチン / gadget=家電充電イヤホン
+pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バッグ
 商品名:${name}
 価格:¥${Number(price).toLocaleString()}
 キャッチコピー:${catchcopy || ''}
-{"category":"beauty/rainy/gift/home/gadget/pet/food/kids/fashion/other"}`;
+{"category":"gift_safe/gift_luxury/gift_fun/gift_emotional/gift_practical/beauty/rainy/home/gadget/pet/food/kids/fashion/other"}`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
