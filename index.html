@@ -196,6 +196,13 @@
   <div id="gen-posts-msg" style="margin-top:8px;font-size:13px;"></div>
 </div>
 
+<div class="sheet-panel">
+  <div class="sheet-panel-title">🤖 Claude監修</div>
+  <div class="sheet-panel-hint">「投稿文生成済み」の行（最大5件）をClaudeが監修。X用とThreads用を同時生成してシートに保存します</div>
+  <button class="btn-main" id="claude-review-btn" onclick="reviewWithClaude()">🤖 Claude監修する</button>
+  <div id="claude-review-msg" style="margin-top:8px;font-size:13px;"></div>
+</div>
+
 <div id="result">
   <div class="product-info">
     <img id="prod-img" src="" alt="商品画像">
@@ -617,6 +624,32 @@ async function generateSheetPosts() {
   } finally {
     btn.disabled = false;
     btn.textContent = '✍️ 未生成の投稿文を作る';
+  }
+}
+
+async function reviewWithClaude() {
+  const btn = document.getElementById('claude-review-btn');
+  const msg = document.getElementById('claude-review-msg');
+  btn.disabled = true;
+  btn.textContent = '監修中...';
+  msg.innerHTML = '';
+  try {
+    const res = await fetch('/api/claude-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.innerHTML = `<span style="color:#1565c0">✅ ${data.message}</span>`;
+    } else {
+      msg.innerHTML = `<span style="color:#b00">❌ ${data.error}</span>`;
+    }
+  } catch (e) {
+    msg.innerHTML = `<span style="color:#b00">❌ 通信エラー: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🤖 Claude監修する';
   }
 }
 

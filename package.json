@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/norimaki12262621-crypto/X-rakuten-tool#readme",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "googleapis": "^144.0.0",
     "groq-sdk": "^1.2.0"
   }
