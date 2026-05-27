@@ -12,29 +12,31 @@ const HEADERS = [
   'scene','HOOK候補','投稿文たたき台','最終投稿文','投稿日','反応メモ',
 ];
 const COL_URL = 6;
-const SHEET_RANGE = 'Sheet1';
 
-function getSheetsClient() {
+async function getSheetsClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key   = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
   const id    = process.env.GOOGLE_SHEET_ID;
   if (!email || !key || !id) throw new Error('Google Sheets環境変数が未設定です (GOOGLE_SHEET_ID / GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY)');
   const auth = new google.auth.JWT(email, null, key, ['https://www.googleapis.com/auth/spreadsheets']);
-  return { sheets: google.sheets({ version: 'v4', auth }), sheetId: id };
+  const sheets = google.sheets({ version: 'v4', auth });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: id });
+  const sheetName = meta.data.sheets[0].properties.title;
+  return { sheets, sheetId: id, sheetName };
 }
 
-async function ensureHeader({ sheets, sheetId }) {
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${SHEET_RANGE}!1:1` });
+async function ensureHeader({ sheets, sheetId, sheetName }) {
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${sheetName}!1:1` });
   if (r.data.values?.[0]?.[0] !== '保存日時') {
     await sheets.spreadsheets.values.update({
-      spreadsheetId: sheetId, range: `${SHEET_RANGE}!A1`,
+      spreadsheetId: sheetId, range: `${sheetName}!A1`,
       valueInputOption: 'USER_ENTERED', resource: { values: [HEADERS] },
     });
   }
 }
 
-async function getExistingUrls({ sheets, sheetId }) {
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${SHEET_RANGE}!G:G` });
+async function getExistingUrls({ sheets, sheetId, sheetName }) {
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${sheetName}!G:G` });
   const rows = r.data.values || [];
   return new Set(rows.slice(1).map(r => r[0]).filter(Boolean));
 }
@@ -167,7 +169,7 @@ module.exports = async function handler(req, res) {
     top5 = top5.map((p, i) => ({ ...p, shortUrl: shortUrls[i] }));
 
     // 5. シート操作
-    const client = getSheetsClient();
+    const client = await getSheetsClient();
     await ensureHeader(client);
     const existingUrls = await getExistingUrls(client);
 
@@ -195,7 +197,7 @@ module.exports = async function handler(req, res) {
 
       await client.sheets.spreadsheets.values.append({
         spreadsheetId: client.sheetId,
-        range: `${SHEET_RANGE}!A:A`,
+        range: `${client.sheetName}!A:A`,
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         resource: { values: [row] },

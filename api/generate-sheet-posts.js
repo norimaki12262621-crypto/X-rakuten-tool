@@ -2,7 +2,6 @@ const Groq = require('groq-sdk');
 const { google } = require('googleapis');
 
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
-const SHEET_RANGE = 'Sheet1';
 const MAX_BATCH   = 5;
 
 // Column indices (0-based)
@@ -12,13 +11,16 @@ const C = {
   HOOKS: 23, DRAFT: 24, FINAL: 25,
 };
 
-function getSheetsClient() {
+async function getSheetsClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key   = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
   const id    = process.env.GOOGLE_SHEET_ID;
   if (!email || !key || !id) throw new Error('Google Sheets環境変数が未設定です');
   const auth = new google.auth.JWT(email, null, key, ['https://www.googleapis.com/auth/spreadsheets']);
-  return { sheets: google.sheets({ version: 'v4', auth }), sheetId: id };
+  const sheets = google.sheets({ version: 'v4', auth });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: id });
+  const sheetName = meta.data.sheets[0].properties.title;
+  return { sheets, sheetId: id, sheetName };
 }
 
 function twitterCount(text) {
@@ -90,11 +92,11 @@ module.exports = async function handler(req, res) {
   if (!groqKey) return res.status(500).json({ success: false, error: 'GROQ_API_KEY未設定' });
 
   try {
-    const client = getSheetsClient();
+    const client = await getSheetsClient();
 
     // 1. 全行取得
     const r = await client.sheets.spreadsheets.values.get({
-      spreadsheetId: client.sheetId, range: `${SHEET_RANGE}!A:AB`,
+      spreadsheetId: client.sheetId, range: `${client.sheetName}!A:AB`,
     });
     const rows = r.data.values || [];
     if (rows.length <= 1) return res.status(200).json({ success: true, count: 0, message: '対象行なし' });
@@ -148,7 +150,7 @@ module.exports = async function handler(req, res) {
 
         await client.sheets.spreadsheets.values.update({
           spreadsheetId: client.sheetId,
-          range: `${SHEET_RANGE}!A${rowIndex}:AB${rowIndex}`,
+          range: `${client.sheetName}!A${rowIndex}:AB${rowIndex}`,
           valueInputOption: 'USER_ENTERED',
           resource: { values: [updated] },
         });

@@ -44,10 +44,12 @@ module.exports = async function handler(req, res) {
     const sheets = google.sheets({ version: 'v4', auth });
 
     const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const sheetName = meta.data.sheets[0].properties.title;
     report.sheetAccess = {
-      status: '✅ 接続成功',
-      title:  meta.data.properties.title,
-      tabs:   meta.data.sheets.map(s => s.properties.title),
+      status:        '✅ 接続成功',
+      title:         meta.data.properties.title,
+      使用するシート名: sheetName,
+      全シート一覧:    meta.data.sheets.map(s => s.properties.title),
     };
   } catch (err) {
     report.error = err.message;
