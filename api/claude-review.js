@@ -29,11 +29,32 @@ async function getSheetsClient() {
   const auth   = new google.auth.JWT(email, null, key, ['https://www.googleapis.com/auth/spreadsheets']);
   const sheets = google.sheets({ version: 'v4', auth });
   const meta   = await sheets.spreadsheets.get({ spreadsheetId: id });
-  const sheetName = meta.data.sheets[0].properties.title;
-  return { sheets, sheetId: id, sheetName };
+  const sheetMeta = meta.data.sheets[0];
+  const sheetName = sheetMeta.properties.title;
+  const sheetGid  = sheetMeta.properties.sheetId;
+  const colCount  = sheetMeta.properties.gridProperties.columnCount;
+  return { sheets, sheetId: id, sheetName, sheetGid, colCount };
 }
 
-async function ensureThreadsHeader({ sheets, sheetId, sheetName }) {
+async function ensureThreadsHeader({ sheets, sheetId, sheetName, sheetGid, colCount }) {
+  // threadsPost は 29列目(AC)が必要。列が足りなければ追加する
+  if (colCount < 29) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetId,
+      resource: {
+        requests: [{
+          appendDimension: {
+            sheetId:   sheetGid,
+            dimension: 'COLUMNS',
+            length:    29 - colCount,
+          },
+        }],
+      },
+    });
+    console.log(`[claude-review] ${29 - colCount}列追加しました`);
+  }
+
+  // ヘッダーがなければ書き込む
   const r = await sheets.spreadsheets.values.get({
     spreadsheetId: sheetId, range: `${sheetName}!AC1`,
   });
