@@ -52,6 +52,7 @@
   #post-text { width: 100%; min-height: 120px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 6px; line-height: 1.6; resize: vertical; }
   #char-count { font-size: 12px; color: #888; text-align: right; margin-bottom: 14px; }
   #char-count.over { color: red; }
+  .search-keyword { font-size: 12px; color: #555; background: #f5f5f5; border-radius: 4px; padding: 5px 10px; margin-bottom: 10px; }
   .btn-post { display: block; width: 100%; background: #000; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; }
   .btn-post:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn-buffer { display: block; width: 100%; background: #168BBF; color: #fff; border: none; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-top: 8px; }
@@ -127,42 +128,42 @@
 
   <!-- 感情カテゴリタブ -->
   <div id="tab-genre" style="display:none;">
-    <input type="hidden" id="genre" value="可愛い 雑貨 韓国 癒し ぬいぐるみ アロマ">
+    <input type="hidden" id="emotion-id" value="heal">
 
     <div class="emotion-hint">今の気分はどれ？</div>
 
     <div class="emotion-grid">
-      <button class="emotion-card active" onclick="selectEmotion(this,'可愛い 雑貨 韓国 癒し ぬいぐるみ アロマ')">
+      <button class="emotion-card active" onclick="selectEmotion(this,'heal')">
         <div class="emotion-emoji">🧸</div>
         <div class="emotion-label">癒されたい</div>
         <div class="emotion-sub">雑貨 / 韓国 / ぬいぐるみ</div>
       </button>
-      <button class="emotion-card" onclick="selectEmotion(this,'スキンケア シャンプー ヘアケア 美容液 保湿')">
+      <button class="emotion-card" onclick="selectEmotion(this,'care')">
         <div class="emotion-emoji">✨</div>
         <div class="emotion-label">自分ケアしたい</div>
         <div class="emotion-sub">スキンケア / ヘアケア</div>
       </button>
-      <button class="emotion-card" onclick="selectEmotion(this,'収納 インテリア キッチン 文房具 雑貨')">
+      <button class="emotion-card" onclick="selectEmotion(this,'organize')">
         <div class="emotion-emoji">🏠</div>
         <div class="emotion-label">生活整えたい</div>
         <div class="emotion-sub">収納 / インテリア / キッチン</div>
       </button>
-      <button class="emotion-card" onclick="selectEmotion(this,'入浴剤 リラックス 快眠 マッサージ')">
+      <button class="emotion-card" onclick="selectEmotion(this,'tired')">
         <div class="emotion-emoji">🛁</div>
         <div class="emotion-label">疲れてる</div>
         <div class="emotion-sub">入浴 / 快眠 / マッサージ</div>
       </button>
-      <button class="emotion-card" onclick="selectEmotion(this,'ギフト プレゼント 誕生日 母の日 記念日')">
+      <button class="emotion-card" onclick="selectEmotion(this,'gift')">
         <div class="emotion-emoji">🎁</div>
         <div class="emotion-label">プレゼント迷子</div>
         <div class="emotion-sub">誕生日 / 母の日 / 記念日</div>
       </button>
-      <button class="emotion-card" onclick="selectEmotion(this,'コスメ アクセサリー バッグ おしゃれ スマホケース')">
+      <button class="emotion-card" onclick="selectEmotion(this,'cute')">
         <div class="emotion-emoji">💄</div>
         <div class="emotion-label">可愛くいたい</div>
         <div class="emotion-sub">コスメ / アクセ / バッグ</div>
       </button>
-      <button class="emotion-card wide" onclick="selectEmotion(this,'スイーツ お取り寄せ グルメ 高級フルーツ')">
+      <button class="emotion-card wide" onclick="selectEmotion(this,'food')">
         <div class="emotion-emoji">🍰</div>
         <div>
           <div class="emotion-label">食べて幸せ</div>
@@ -191,6 +192,7 @@
     </div>
   </div>
   <div class="reason" id="prod-reason"></div>
+  <div class="search-keyword" id="search-keyword" style="display:none;"></div>
 
   <!-- 感情分析パネル -->
   <div class="analysis-panel" id="analysis-panel" style="display:none;">
@@ -378,10 +380,10 @@ async function addToBuffer() {
   }
 }
 
-function selectEmotion(el, keyword) {
+function selectEmotion(el, emotionId) {
   document.querySelectorAll('.emotion-card').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('genre').value = keyword;
+  document.getElementById('emotion-id').value = emotionId;
 }
 
 function switchTab(tab) {
@@ -402,6 +404,7 @@ async function fetchProduct() {
   btn.disabled = true;
   btn.textContent = '分析中...';
   document.getElementById('result').style.display = 'none';
+  document.getElementById('search-keyword').style.display = 'none';
   errEl.classList.remove('on');
 
   try {
@@ -500,9 +503,9 @@ async function fetchProduct() {
       }
       updateCount();
     } else {
-      const genre = document.getElementById('genre').value;
+      const emotionId = document.getElementById('emotion-id').value;
       const maxPrice = document.getElementById('max-price').value;
-      const res = await fetch(`/api/get-product?genre=${encodeURIComponent(genre)}&maxPrice=${maxPrice}`);
+      const res = await fetch(`/api/get-product?emotionId=${encodeURIComponent(emotionId)}&maxPrice=${maxPrice}`);
       const data = await res.json();
       if (!data.success) throw new Error(data.error || '取得に失敗しました');
       const p = data.product;
@@ -513,11 +516,16 @@ async function fetchProduct() {
       document.getElementById('prod-price').textContent = `¥${Number(p.price).toLocaleString()}`;
       document.getElementById('prod-shop').textContent = p.shop || '';
       document.getElementById('prod-reason').textContent = data.reason ? '💡 ' + data.reason : '';
+      const kwEl = document.getElementById('search-keyword');
+      if (data.usedKeyword) {
+        kwEl.textContent = '検索ワード：' + data.usedKeyword;
+        kwEl.style.display = 'block';
+      }
       document.getElementById('post-text').value = data.postText;
       currentPostUrl = p.url || '';
       document.getElementById('result').style.display = 'block';
       updateCount();
-      // ジャンルタブは hook-generator を別途呼び出し
+      // 感情タブは hook-generator を別途呼び出し
       showAnalysisLoading();
       loadHookAnalysis(p.name, p.price, p.catchcopy || '', '', data.jsScore ?? null);
     }

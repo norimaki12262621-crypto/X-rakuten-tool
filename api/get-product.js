@@ -3,12 +3,40 @@ const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const { inferMacroCategory, normalizeMacroCategory, buildPost } = require('./_categories');
 
+const EMOTION_SEARCH_MAP = {
+  heal:     { label: '癒されたい',     searches: ['可愛い雑貨', '韓国雑貨', 'ぬいぐるみ', 'アロマ', '癒しグッズ'] },
+  care:     { label: '自分ケアしたい', searches: ['スキンケア', 'シャンプー', 'ヘアケア', '美容液', '保湿クリーム'] },
+  organize: { label: '生活整えたい',   searches: ['収納グッズ', 'インテリア雑貨', 'キッチン雑貨', '文房具', '便利グッズ'] },
+  tired:    { label: '疲れてる',       searches: ['入浴剤', '快眠グッズ', 'リラックスグッズ', 'ホットアイマスク', 'マッサージ器'] },
+  gift:     { label: 'プレゼント迷子', searches: ['ギフト', 'プレゼント', '誕生日ギフト', '母の日ギフト', '記念日ギフト'] },
+  cute:     { label: '可愛くいたい',   searches: ['コスメ', 'アクセサリー', 'バッグ', 'スマホケース', 'おしゃれ雑貨'] },
+  food:     { label: '食べて幸せ',     searches: ['スイーツ', 'お取り寄せグルメ', '高級フルーツ', '焼き菓子', 'ご褒美スイーツ'] },
+};
+
+async function searchWithFallback(searches, maxPrice) {
+  for (const keyword of searches) {
+    try {
+      const params = new URLSearchParams({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
+      const r = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${params}`);
+      const d = await r.json();
+      if (d.Items && d.Items.length > 0) {
+        console.log(`[get-product] hit: "${keyword}" (${d.Items.length}件)`);
+        return { rawItems: d.Items, usedKeyword: keyword };
+      }
+      console.log(`[get-product] miss: "${keyword}"`);
+    } catch (e) {
+      console.log(`[get-product] error "${keyword}":`, e.message);
+    }
+  }
+  return { rawItems: [], usedKeyword: null };
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
+  const { emotionId, genre = '人気 おすすめ', maxPrice = 10000 } = req.query;
   const groqKey = process.env.GROQ_API_KEY?.replace(/^﻿/, '').trim();
 
   function dedupeProductName(name) {
@@ -132,20 +160,27 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
   }
 
   try {
-    const proxyParams = new URLSearchParams({
-      keyword: genre,
-      maxPrice: maxPrice,
-      hits: 20,
-      sort: '-reviewCount',
-    });
-    const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
-    const rakutenData = await proxyRes.json();
-
-    if (!rakutenData.Items || rakutenData.Items.length === 0) {
-      return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
+    let rawItems, usedKeyword;
+    if (emotionId && EMOTION_SEARCH_MAP[emotionId]) {
+      const emotion = EMOTION_SEARCH_MAP[emotionId];
+      ({ rawItems, usedKeyword } = await searchWithFallback(emotion.searches, maxPrice));
+      if (!usedKeyword) {
+        const tried = emotion.searches.join(' / ');
+        console.log(`[get-product] all miss for "${emotion.label}": ${tried}`);
+        return res.status(404).json({ success: false, error: `「${emotion.label}」で商品が見つかりませんでした（試したワード: ${tried}）` });
+      }
+    } else {
+      const proxyParams = new URLSearchParams({ keyword: genre, maxPrice, hits: 20, sort: '-reviewCount' });
+      const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
+      const rakutenData = await proxyRes.json();
+      if (!rakutenData.Items || rakutenData.Items.length === 0) {
+        return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
+      }
+      rawItems = rakutenData.Items;
+      usedKeyword = genre;
     }
 
-    const items = rakutenData.Items.slice(0, 20).map(({ Item }) => ({
+    const items = rawItems.slice(0, 20).map(({ Item }) => ({
       name: dedupeProductName(Item.itemName),
       catchcopy: dedupeProductName(Item.catchcopy || ''),
       price: Item.itemPrice,
@@ -163,7 +198,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
       .slice(0, 10);
 
     let selected = jsSorted[0];
-    let category = inferMacroCategory(`${genre} ${selected.name} ${selected.catchcopy}`);
+    let category = inferMacroCategory(`${usedKeyword} ${selected.name} ${selected.catchcopy}`);
 
     try {
       if (groqKey) {
@@ -183,7 +218,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
       console.log('[get-product] AI scoring fallback:', err.message);
     }
 
-    const sourceText = `${genre} ${selected.name} ${selected.catchcopy}`;
+    const sourceText = `${usedKeyword} ${selected.name} ${selected.catchcopy}`;
     const reason = `JSスコア${selected._jsScore?.toFixed(0) ?? '?'}pt・レビュー${selected.reviewAverage}(${selected.reviewCount}件)で自動選択`;
     const postBody = buildPost(selected.price, sourceText);
     const shortUrl = await shortenUrl(selected.url);
@@ -196,6 +231,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
       postText,
       category,
       jsScore: selected._jsScore ?? null,
+      usedKeyword,
     });
 
   } catch (err) {
