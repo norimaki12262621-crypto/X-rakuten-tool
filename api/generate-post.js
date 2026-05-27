@@ -72,8 +72,11 @@ async function smartAnalyze(name, price, catchcopy, description, groqClient) {
 説明:${desc}
 ¥${Number(price).toLocaleString()}
 
-禁止:楽天で人気/高評価/今話題/購入はこちら/説明口調/綺麗すぎる文章
-重視:本音/あるある/悩み/共感/人間っぽさ/少し雑なリアル感
+禁止:楽天で人気/高評価/今話題/購入はこちら/説明口調/綺麗すぎる文章/商品名コピペ/特別感がある/高級感がある/便利/使える/喜ばれる/おすすめ/まとめ口調
+重視:本音/あるある/悩み/共感/人間っぽさ/少し雑なリアル感/情景描写/空気感/小さな体験/自分ゴト化/理想の自分/脳内再生される言葉
+
+HOOKの作り方:感情＋情景＋あるある を混ぜる
+良い例:「箱開けた瞬間、空気変わる系のやつ」「冷蔵庫に高級メロンあるだけで、ちょっと機嫌いい」「夕方の鏡、ちょっと機嫌よく見れるやつ」
 
 出力:
 - hooks:Xで流れてくる独り言風HOOK×5案(商品名コピペ禁止/\\n改行OK/各30字以内)
@@ -81,15 +84,16 @@ async function smartAnalyze(name, price, catchcopy, description, groqClient) {
 - pain:悩みタグ(10字以内)
 - season:季節タグ(8字以内)
 - angle:投稿切り口(10字以内)
+- scene:その商品がある生活の1シーン(20字以内/情景のみ/説明なし)
 - xScore:Xバズ適性0-100
 
-{"hooks":["...\\n...","...","...","...","..."],"emotion":"...","pain":"...","season":"...","angle":"...","xScore":78}`;
+{"hooks":["...\\n...","...","...","...","..."],"emotion":"...","pain":"...","season":"...","angle":"...","scene":"...","xScore":78}`;
 
   const completion = await groqClient.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
     model: SMART_MODEL,
     temperature: 0.85,
-    max_tokens: 450,
+    max_tokens: 500,
   });
 
   const raw = (completion.choices[0]?.message?.content || '').trim();
@@ -149,7 +153,7 @@ module.exports = async function handler(req, res) {
 
   if (hookAnalysis && hookAnalysis.xScore >= 70 && hookAnalysis.hooks?.length) {
     const mainHook = hookAnalysis.hooks[0];
-    const scene = selectScene(sourceText);
+    const scene = hookAnalysis.scene || selectScene(sourceText);
     const echo  = pick(selectCopy(sourceText).echoes);
     body = `${mainHook}\n\n${scene}\n\n¥${Number(price).toLocaleString()}／${echo}`;
     usedSmartHook = true;
@@ -178,5 +182,6 @@ module.exports = async function handler(req, res) {
     pain: hookAnalysis?.pain || '',
     season: hookAnalysis?.season || '',
     angle: hookAnalysis?.angle || '',
+    scene: hookAnalysis?.scene || '',
   });
 };
