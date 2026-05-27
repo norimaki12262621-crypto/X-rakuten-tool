@@ -1,17 +1,7 @@
 const Groq = require('groq-sdk');
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
-const { inferMacroCategory, normalizeMacroCategory, buildPost } = require('./_categories');
-
-const EMOTION_SEARCH_MAP = {
-  heal:     { label: '癒されたい',     searches: ['可愛い雑貨', '韓国雑貨', 'ぬいぐるみ', 'アロマ', '癒しグッズ'] },
-  care:     { label: '自分ケアしたい', searches: ['スキンケア', 'シャンプー', 'ヘアケア', '美容液', '保湿クリーム'] },
-  organize: { label: '生活整えたい',   searches: ['収納グッズ', 'インテリア雑貨', 'キッチン雑貨', '文房具', '便利グッズ'] },
-  tired:    { label: '疲れてる',       searches: ['入浴剤', '快眠グッズ', 'リラックスグッズ', 'ホットアイマスク', 'マッサージ器'] },
-  gift:     { label: 'プレゼント迷子', searches: ['ギフト', 'プレゼント', '誕生日ギフト', '母の日ギフト', '記念日ギフト'] },
-  cute:     { label: '可愛くいたい',   searches: ['コスメ', 'アクセサリー', 'バッグ', 'スマホケース', 'おしゃれ雑貨'] },
-  food:     { label: '食べて幸せ',     searches: ['スイーツ', 'お取り寄せグルメ', '高級フルーツ', '焼き菓子', 'ご褒美スイーツ'] },
-};
+const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('./_categories');
 
 async function searchWithFallback(searches, maxPrice) {
   for (const keyword of searches) {

@@ -357,6 +357,16 @@ function buildPost(price, text) {
   return `${hook}\n\n${scene}\n\n${priceStr}／${echo}`;
 }
 
+const EMOTION_SEARCH_MAP = {
+  heal:     { label: '癒されたい',     searches: ['可愛い雑貨', '韓国雑貨', 'ぬいぐるみ', 'アロマ', '癒しグッズ'] },
+  care:     { label: '自分ケアしたい', searches: ['スキンケア', 'シャンプー', 'ヘアケア', '美容液', '保湿クリーム'] },
+  organize: { label: '生活整えたい',   searches: ['収納グッズ', 'インテリア雑貨', 'キッチン雑貨', '文房具', '便利グッズ'] },
+  tired:    { label: '疲れてる',       searches: ['入浴剤', '快眠グッズ', 'リラックスグッズ', 'ホットアイマスク', 'マッサージ器'] },
+  gift:     { label: 'プレゼント迷子', searches: ['ギフト', 'プレゼント', '誕生日ギフト', '母の日ギフト', '記念日ギフト'] },
+  cute:     { label: '可愛くいたい',   searches: ['コスメ', 'アクセサリー', 'バッグ', 'スマホケース', 'おしゃれ雑貨'] },
+  food:     { label: '食べて幸せ',     searches: ['スイーツ', 'お取り寄せグルメ', '高級フルーツ', '焼き菓子', 'ご褒美スイーツ'] },
+};
+
 // UI表示用のカテゴリ日本語ラベル
 const CAT_LABEL = {
   gift_safe:      '定番安心ギフト',
@@ -379,6 +389,7 @@ module.exports = {
   MACRO_COPY,
   MACRO_KEYS,
   CAT_LABEL,
+  EMOTION_SEARCH_MAP,
   inferGiftSubtype,
   inferMacroCategory,
   normalizeMacroCategory,
