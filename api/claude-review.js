@@ -1,7 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { google }  = require('googleapis');
 
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514';
 const MAX_BATCH    = 5;
 
 const C = {
@@ -374,6 +374,7 @@ module.exports = async function handler(req, res) {
 
     const anthropic = new Anthropic({ apiKey });
     let count = 0;
+    const errors = [];
 
     for (const { rowIndex, row } of targets) {
       try {
@@ -407,14 +408,25 @@ module.exports = async function handler(req, res) {
         count++;
         console.log(`[claude-review] row ${rowIndex}: ${item.name.slice(0, 20)}`);
       } catch (e) {
-        console.error(`[claude-review] row ${rowIndex} error:`, e.message);
+        const msg = `row${rowIndex}: ${e.message}`;
+        console.error('[claude-review]', msg);
+        errors.push(msg);
       }
+    }
+
+    if (count === 0 && errors.length > 0) {
+      return res.status(500).json({
+        success: false,
+        error: errors[0],
+        allErrors: errors,
+      });
     }
 
     return res.status(200).json({
       success: true,
       count,
       message: `${count}件をClaude監修しました`,
+      ...(errors.length > 0 && { warnings: errors }),
     });
 
   } catch (err) {
