@@ -209,6 +209,16 @@ module.exports = async function handler(req, res) {
 
   } catch (err) {
     console.error('[save-to-sheet]', err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    let hint = err.message;
+    if (err.message.includes('not found') || err.message.includes('NOT_FOUND')) {
+      hint = `シートが見つかりません。原因は①か②です。①GOOGLE_SHEET_IDが間違っている（URLの /d/ と /edit の間の文字列だけを設定してください）②スプレッドシートをサービスアカウントのメールアドレス（GOOGLE_SERVICE_ACCOUNT_EMAIL）に「編集者」で共有していない。診断: https://x-rakuten-tool.vercel.app/api/debug-sheet`;
+    } else if (err.message.includes('permission') || err.message.includes('PERMISSION_DENIED')) {
+      hint = `権限エラー。スプレッドシートをサービスアカウントのメールアドレスに「編集者」で共有してください。診断: https://x-rakuten-tool.vercel.app/api/debug-sheet`;
+    } else if (err.message.includes('invalid_grant') || err.message.includes('DECODER')) {
+      hint = `private_keyが壊れています。JSONファイルから"private_key"の値を再コピーしてVercelに設定し直してください。診断: https://x-rakuten-tool.vercel.app/api/debug-sheet`;
+    } else if (err.message.includes('環境変数')) {
+      hint = `${err.message} 診断: https://x-rakuten-tool.vercel.app/api/debug-sheet`;
+    }
+    return res.status(500).json({ success: false, error: hint });
   }
 };
