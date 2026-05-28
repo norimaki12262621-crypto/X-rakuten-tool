@@ -1,7 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { google }  = require('googleapis');
 
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514';
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const MAX_BATCH    = 5;
 
 const C = {
