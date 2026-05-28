@@ -401,11 +401,12 @@ module.exports = async function handler(req, res) {
 
         const { xPost, threadsPost } = await generatePosts(item, anthropic);
 
+        const url = (item.url || '').trim();
         const updated = [...row];
         while (updated.length < 29) updated.push('');
         updated[C.STATUS]  = '監修済み';
-        updated[C.FINAL]   = item.url ? `${xPost}\n${item.url}` : xPost;
-        updated[C.THREADS] = threadsPost;
+        updated[C.FINAL]   = url ? `${xPost}\n${url}` : xPost;
+        updated[C.THREADS] = url ? `${threadsPost}\n${url}` : threadsPost;
 
         await client.sheets.spreadsheets.values.update({
           spreadsheetId: client.sheetId,
