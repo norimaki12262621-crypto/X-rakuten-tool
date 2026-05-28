@@ -1,6 +1,6 @@
 const Groq = require('groq-sdk');
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
-const { inferMacroCategory, CAT_LABEL } = require('./_categories');
+const { inferMacroCategory, CAT_LABEL } = require('../lib/_categories');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

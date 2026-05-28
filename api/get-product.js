@@ -1,7 +1,7 @@
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
-const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('./_categories');
-const { buildCopyPackage } = require('./copy-engine');
+const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('../lib/_categories');
+const { buildCopyPackage } = require('../lib/copy-engine');
 
 async function searchWithFallback(searches, maxPrice) {
   for (const keyword of searches) {
