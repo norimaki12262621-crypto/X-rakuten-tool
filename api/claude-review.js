@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { google }  = require('googleapis');
+const { buildStrongXPost } = require('../lib/post-builder');
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const MAX_BATCH    = 5;
@@ -72,6 +73,25 @@ function twitterCount(text) {
   const urls = text.match(/https?:\/\/\S+/g) || [];
   const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
   return [...text].length - urlActual + urls.length * 23;
+}
+
+function isWeakXPost(text = '') {
+  const withoutUrl = String(text).replace(/https?:\/\/\S+/g, '').trim();
+  return twitterCount(withoutUrl) < 95;
+}
+
+function strengthenXPost(xPost, item) {
+  const full = item.url ? `${xPost}\n${item.url}` : xPost;
+  if (!xPost || isWeakXPost(xPost) || twitterCount(full) > 140) {
+    return buildStrongXPost({
+      name: item.name,
+      price: item.price,
+      url: item.url,
+      genre: item.emotionCategory,
+      category: item.emotionCategory,
+    });
+  }
+  return xPost;
 }
 
 function buildPrompt(item) {
@@ -333,7 +353,7 @@ async function generatePosts(item, anthropic) {
     console.warn('[claude-review] xPost超過:', twitterCount(xPost), '文字');
   }
 
-  return { xPost, threadsPost };
+  return { xPost: strengthenXPost(xPost, item), threadsPost };
 }
 
 module.exports = async function handler(req, res) {
@@ -362,12 +382,16 @@ module.exports = async function handler(req, res) {
 
     const targets = [];
     const foundStatuses = [];
-    for (let i = 1; i < rows.length; i++) {
+    for (let i = rows.length - 1; i >= 1; i--) {
       const row = rows[i];
       const status = (row[C.STATUS] || '').trim();
       if (i <= 10) foundStatuses.push(`row${i + 1}:"${status}"`);
       if (status === '投稿文生成済み') {
         targets.push({ rowIndex: i + 1, row });
+      }
+      if (isWeakXPost(row[C.FINAL] || row[C.DRAFT] || '')) {
+        const alreadyTargeted = targets.some(target => target.rowIndex === i + 1);
+        if (!alreadyTargeted) targets.push({ rowIndex: i + 1, row });
       }
       if (targets.length >= MAX_BATCH) break;
     }
