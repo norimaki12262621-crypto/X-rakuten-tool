@@ -35,10 +35,13 @@ async function ensureHeader({ sheets, sheetId, sheetName }) {
   }
 }
 
-async function getExistingUrls({ sheets, sheetId, sheetName }) {
-  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${sheetName}!G:G` });
+async function getExistingProducts({ sheets, sheetId, sheetName }) {
+  const r = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `${sheetName}!E:G` });
   const rows = r.data.values || [];
-  return new Set(rows.slice(1).map(r => r[0]).filter(Boolean));
+  return {
+    names: new Set(rows.slice(1).map(r => normalizeProductKey(r[0])).filter(Boolean)),
+    urls: new Set(rows.slice(1).flatMap(r => [r[2]]).filter(Boolean)),
+  };
 }
 
 function dedupeProductName(name) {
@@ -55,6 +58,14 @@ function dedupeProductName(name) {
     if (t.length >= 3 && seen.has(key)) return false;
     seen.add(key); return true;
   }).join(' ').replace(/^[\s・\/]+|[\s・\/]+$/g, '').slice(0, 50);
+}
+
+function normalizeProductKey(name) {
+  return (name || '')
+    .replace(/\s+/g, '')
+    .replace(/[|｜/／・,，.。()（）【】\[\]「」『』]/g, '')
+    .toLowerCase()
+    .slice(0, 48);
 }
 
 function jsScore(item) {
@@ -145,38 +156,45 @@ module.exports = async function handler(req, res) {
       url: Item.affiliateUrl || Item.itemUrl,
       image: Item.mediumImageUrls?.[0]?.imageUrl || '',
     }));
-    const jsSorted = items.map(it => ({ ...it, _js: jsScore(it) })).sort((a, b) => b._js - a._js).slice(0, 10);
+    const jsSorted = items.map(it => ({ ...it, _js: jsScore(it) })).sort((a, b) => b._js - a._js);
 
-    // 3. AIバッチスコアリング → 上位5件
-    let top5 = jsSorted.slice(0, 5);
+    // 3. AIバッチスコアリング → 並び替え。保存時は重複を避けて5件まで拾う
+    let candidates = jsSorted;
     const aiScoreMap = new Map();
     if (groqKey) {
       try {
         const groq = new Groq({ apiKey: groqKey, timeout: 15000 });
-        const aiScores = await smartScoreBatch(jsSorted, groq);
+        const aiTarget = jsSorted.slice(0, 10);
+        const aiScores = await smartScoreBatch(aiTarget, groq);
         aiScores.forEach(s => aiScoreMap.set(jsSorted[s.i], s.s));
-        const sorted = [...aiScores].sort((a, b) => b.s - a.s);
-        top5 = sorted.slice(0, 5).map(s => jsSorted[s.i]);
+        const aiRanked = [...aiScores]
+          .filter(s => aiTarget[s.i])
+          .sort((a, b) => b.s - a.s)
+          .map(s => aiTarget[s.i]);
+        const aiRankedSet = new Set(aiRanked);
+        candidates = [...aiRanked, ...jsSorted.filter(p => !aiRankedSet.has(p))];
       } catch (e) {
         console.log('[save-to-sheet] AI score fallback:', e.message);
       }
     }
 
     // 4. URL短縮 (並列)
-    const shortUrls = await Promise.all(top5.map(p => shortenUrl(p.url)));
-    top5 = top5.map((p, i) => ({ ...p, shortUrl: shortUrls[i] }));
+    const shortUrls = await Promise.all(candidates.map(p => shortenUrl(p.url)));
+    candidates = candidates.map((p, i) => ({ ...p, shortUrl: shortUrls[i] }));
 
     // 5. シート操作
     const client = await getSheetsClient();
     await ensureHeader(client);
-    const existingUrls = await getExistingUrls(client);
+    const existing = await getExistingProducts(client);
 
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
     let saved = 0, skipped = 0;
     const savedProducts = [];
 
-    for (const p of top5) {
-      if (existingUrls.has(p.shortUrl) || existingUrls.has(p.url)) {
+    for (const p of candidates) {
+      if (saved >= 5) break;
+      const productKey = normalizeProductKey(p.name);
+      if (existing.urls.has(p.shortUrl) || existing.urls.has(p.url) || existing.names.has(productKey)) {
         skipped++;
         console.log(`[save-to-sheet] skip duplicate: ${p.name.slice(0, 20)}`);
         continue;
@@ -200,12 +218,22 @@ module.exports = async function handler(req, res) {
         insertDataOption: 'INSERT_ROWS',
         resource: { values: [row] },
       });
-      existingUrls.add(p.shortUrl);
+      existing.urls.add(p.shortUrl);
+      existing.names.add(productKey);
       saved++;
       savedProducts.push({ name: p.name, url: p.shortUrl });
     }
 
-    return res.status(200).json({ success: true, saved, skipped, usedKeyword, products: savedProducts });
+    return res.status(200).json({
+      success: true,
+      saved,
+      skipped,
+      usedKeyword,
+      products: savedProducts,
+      message: saved > 0
+        ? `${saved}件を保存しました`
+        : '新規候補が見つかりませんでした。別の感情カテゴリか予算で試してください',
+    });
 
   } catch (err) {
     console.error('[save-to-sheet]', err.message);

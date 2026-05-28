@@ -630,7 +630,10 @@ async function stockToSheet() {
     const data = await res.json();
     if (data.success) {
       const skip = data.skipped > 0 ? `（${data.skipped}件重複スキップ）` : '';
-      msg.innerHTML = `<span style="color:#1565c0">✅ ${data.saved}件をスプレッドシートに保存しました${skip}　検索ワード：${data.usedKeyword}</span>`;
+      const color = data.saved > 0 ? '#1565c0' : '#b26a00';
+      const icon = data.saved > 0 ? '✅' : '⚠️';
+      const text = data.message || `${data.saved}件をスプレッドシートに保存しました`;
+      msg.innerHTML = `<span style="color:${color}">${icon} ${text}${skip}　検索ワード：${data.usedKeyword}</span>`;
     } else {
       msg.innerHTML = `<span style="color:#b00">❌ ${data.error}</span>`;
     }
