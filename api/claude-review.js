@@ -361,15 +361,23 @@ module.exports = async function handler(req, res) {
     }
 
     const targets = [];
+    const foundStatuses = [];
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if ((row[C.STATUS] || '') === '投稿文生成済み') {
+      const status = (row[C.STATUS] || '').trim();
+      if (i <= 10) foundStatuses.push(`row${i + 1}:"${status}"`);
+      if (status === '投稿文生成済み') {
         targets.push({ rowIndex: i + 1, row });
       }
       if (targets.length >= MAX_BATCH) break;
     }
     if (!targets.length) {
-      return res.status(200).json({ success: true, count: 0, message: '「投稿文生成済み」の行がありません' });
+      return res.status(200).json({
+        success: false,
+        count: 0,
+        message: '「投稿文生成済み」の行が見つかりませんでした',
+        debug_statuses: foundStatuses,
+      });
     }
 
     const anthropic = new Anthropic({ apiKey });
