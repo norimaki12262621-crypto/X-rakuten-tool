@@ -48,6 +48,12 @@
   .product-info .price { color: #BF0000; font-weight: bold; font-size: 15px; }
   .product-info .shop { color: #999; font-size: 11px; margin-top: 3px; }
   .reason { background: #f0f7ff; border-left: 3px solid #4a90e2; padding: 9px 12px; font-size: 12px; color: #444; margin-bottom: 14px; border-radius: 0 4px 4px 0; line-height: 1.6; }
+  .insights { display: none; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 14px; overflow: hidden; background: #fff; }
+  .insights.on { display: block; }
+  .insights-head { padding: 8px 10px; font-size: 12px; font-weight: bold; background: #fafafa; border-bottom: 1px solid #e5e7eb; color: #444; }
+  .insight-grid { display: grid; grid-template-columns: 92px 1fr; font-size: 12px; line-height: 1.55; }
+  .insight-key { padding: 7px 9px; background: #f8fafc; color: #64748b; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #eef2f7; font-weight: bold; }
+  .insight-val { padding: 7px 9px; border-bottom: 1px solid #eef2f7; color: #222; white-space: pre-wrap; }
   .result-label { font-size: 12px; font-weight: bold; color: #555; margin-bottom: 6px; }
   #post-text { width: 100%; min-height: 120px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 6px; line-height: 1.6; resize: vertical; }
   #char-count { font-size: 12px; color: #888; text-align: right; margin-bottom: 14px; }
@@ -225,6 +231,10 @@
     </div>
   </div>
 
+  <div class="insights" id="insights">
+    <div class="insights-head">Claude仕上げ用メモ</div>
+    <div class="insight-grid" id="insight-grid"></div>
+  </div>
   <div class="result-label">投稿テキスト（編集可能）</div>
   <textarea id="post-text" oninput="updateCount()"></textarea>
   <div id="char-count">0 / 280</div>
@@ -239,6 +249,33 @@
 let currentTab = 'url';
 let currentPostUrl = ''; // フック反映時にURL再結合するため保持
 
+function renderInsights(data = {}) {
+  const box = document.getElementById('insights');
+  const grid = document.getElementById('insight-grid');
+  const rows = [
+    ['商品タイプ', data.productType],
+    ['誰向け', data.target],
+    ['悩み', data.pain],
+    ['場面', data.scene],
+    ['切り口', data.angle],
+    ['ベネフィット', data.benefit],
+    ['HOOK', data.hook],
+    ['Threads案', data.threadsPost],
+  ].filter(([, v]) => v);
+
+  if (!rows.length) {
+    box.classList.remove('on');
+    grid.innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = rows.map(([k, v]) => (
+    `<div class="insight-key">${k}</div><div class="insight-val">${String(v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}</div>`
+  )).join('');
+  box.classList.add('on');
+}
+
+// Buffer token persistence
 window.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('buffer_access_token');
   if (saved) document.getElementById('buffer-token').value = saved;
@@ -427,6 +464,7 @@ async function fetchProduct() {
   document.getElementById('result').style.display = 'none';
   document.getElementById('search-keyword').style.display = 'none';
   errEl.classList.remove('on');
+  renderInsights();
 
   try {
     if (currentTab === 'url') {
@@ -517,10 +555,12 @@ async function fetchProduct() {
         if (postData.success) {
           showAnalysis({ xScore: postData.xScore, emotion: postData.emotion, pain: postData.pain, season: postData.season, angle: postData.angle, hooks: postData.hooks });
         }
+        renderInsights(postData);
       } catch {
         document.getElementById('post-text').value =
           `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
         document.getElementById('analysis-panel').style.display = 'none';
+        renderInsights();
       }
       updateCount();
     } else {
@@ -544,6 +584,7 @@ async function fetchProduct() {
       }
       document.getElementById('post-text').value = data.postText;
       currentPostUrl = p.url || '';
+      renderInsights(data);
       document.getElementById('result').style.display = 'block';
       updateCount();
       // 感情タブは hook-generator を別途呼び出し

@@ -1,7 +1,7 @@
-const Groq = require('groq-sdk');
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('./_categories');
+const { buildCopyPackage } = require('./copy-engine');
 
 async function searchWithFallback(searches, maxPrice) {
   for (const keyword of searches) {
@@ -192,6 +192,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
 
     try {
       if (groqKey) {
+        const Groq = require('groq-sdk');
         const groqClient = new Groq({ apiKey: groqKey, timeout: 15000 });
         // SMART_MODEL でXバズ適性スコアリング → 70pt以上でフィルタ
         const scores = await smartScore(jsSorted, groqClient);
@@ -209,8 +210,13 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
     }
 
     const sourceText = `${usedKeyword} ${selected.name} ${selected.catchcopy}`;
-    const reason = `JSスコア${selected._jsScore?.toFixed(0) ?? '?'}pt・レビュー${selected.reviewAverage}(${selected.reviewCount}件)で自動選択`;
-    const postBody = buildPost(selected.price, sourceText);
+    const copyPackage = buildCopyPackage({
+      ...selected,
+      genre: usedKeyword || genre,
+      category,
+    });
+    const reason = `${copyPackage.productType} / ${copyPackage.target} / JS${selected._jsScore?.toFixed(0) ?? '?'}pt`;
+    const postBody = copyPackage.xPostBody || buildPost(selected.price, sourceText);
     const shortUrl = await shortenUrl(selected.url);
     const postText = trimTo140(postBody, shortUrl);
 
@@ -220,6 +226,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
       reason,
       postText,
       category,
+      ...copyPackage,
       jsScore: selected._jsScore ?? null,
       usedKeyword,
     });

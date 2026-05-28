@@ -1,7 +1,7 @@
-const Groq = require('groq-sdk');
 const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const { pick, inferMacroCategory, normalizeMacroCategory, selectCopy, selectScene, buildPost } = require('./_categories');
+const { buildCopyPackage } = require('./copy-engine');
 
 function cleanProductName(name = '') {
   return name
@@ -33,6 +33,7 @@ function trimTo140(body, url) {
 }
 
 function createGroqClient(apiKey) {
+  const Groq = require('groq-sdk');
   return new Groq({ apiKey, timeout: 15000 });
 }
 
@@ -164,6 +165,14 @@ module.exports = async function handler(req, res) {
     body = buildPost(price, sourceText);
   }
 
+  const copyPackage = buildCopyPackage({
+    name,
+    price,
+    catchcopy,
+    description,
+    url,
+    category,
+  });
   const postText = trimTo140(body, url);
   savePostLog({
     ts: new Date().toISOString(),
@@ -178,6 +187,7 @@ module.exports = async function handler(req, res) {
     success: true,
     postText,
     charCount: twitterCount(postText),
+    ...copyPackage,
     category,
     xScore: hookAnalysis?.xScore ?? null,
     hooks: Array.isArray(hookAnalysis?.hooks) ? hookAnalysis.hooks : [],
