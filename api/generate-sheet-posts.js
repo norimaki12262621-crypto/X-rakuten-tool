@@ -1,5 +1,6 @@
 const Groq = require('groq-sdk');
 const { google } = require('googleapis');
+const { buildStrongXPost } = require('../lib/post-builder');
 
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const MAX_BATCH   = 5;
@@ -133,6 +134,13 @@ module.exports = async function handler(req, res) {
         let body = mainHook;
         if (scene) body += `\n\n${scene}`;
         body += `\n\n${priceStr}`;
+        body = buildStrongXPost({
+          name: item.name,
+          price: item.price,
+          url: item.url,
+          genre: item.emotionCategory,
+          category: item.emotionCategory,
+        });
         const postText = item.url ? trimTo140(body, item.url) : body;
 
         // 4. 行を更新

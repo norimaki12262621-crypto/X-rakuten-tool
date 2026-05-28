@@ -145,12 +145,20 @@ module.exports = async function handler(req, res) {
     if (groqKey) {
       const groqClient = createGroqClient(groqKey);
       category = await analyzeCategory(name, price, catchcopy, groqClient);
-      hookAnalysis = await smartAnalyze(name, price, catchcopy, description, groqClient);
-      console.log('[generate-post] xScore:', hookAnalysis?.xScore, 'category:', category);
+      console.log('[generate-post] category:', category);
     }
   } catch (err) {
     console.log('[generate-post] AI fallback:', err.message);
   }
+
+  const copyPackage = buildCopyPackage({
+    name,
+    price,
+    catchcopy,
+    description,
+    url,
+    category,
+  });
 
   let body;
   let usedSmartHook = false;
@@ -162,17 +170,9 @@ module.exports = async function handler(req, res) {
     body = `${mainHook}\n\n${scene}\n\n¥${Number(price).toLocaleString()}／${echo}`;
     usedSmartHook = true;
   } else {
-    body = buildPost(price, sourceText);
+    body = copyPackage.xPostBody || buildPost(price, sourceText);
   }
 
-  const copyPackage = buildCopyPackage({
-    name,
-    price,
-    catchcopy,
-    description,
-    url,
-    category,
-  });
   const postText = trimTo140(body, url);
   savePostLog({
     ts: new Date().toISOString(),
