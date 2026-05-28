@@ -1,6 +1,6 @@
 // api/shorten-url.js  —  URL 短縮プロキシ
 // RAKUTEN_APP_ID が設定されていれば Rakuten ShortURL API (a.r10.to) を使用。
-// 未設定の場合は TinyURL にフォールバック。
+// 未設定の場合は元の楽天アフィリエイトURLを返す。
 //
 // RAKUTEN_APP_ID の取得:
 //   https://webservice.rakuten.co.jp/ でアプリ登録 → applicationId (数値) を取得
@@ -29,17 +29,6 @@ module.exports = async function handler(req, res) {
     } catch {}
   }
 
-  // 2. TinyURL fallback
-  try {
-    const r = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
-    if (r.ok) {
-      const shortUrl = (await r.text()).trim();
-      if (shortUrl.startsWith('https://')) {
-        return res.status(200).json({ shortUrl, provider: 'tinyurl' });
-      }
-    }
-  } catch {}
-
-  // 3. 元 URL をそのまま返す
+  // 2. TinyURL はプレビュー/警告ページを挟むことがあるため使わない。
   return res.status(200).json({ shortUrl: url, provider: 'original' });
 };

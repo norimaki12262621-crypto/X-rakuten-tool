@@ -110,8 +110,6 @@ async function shortenUrl(rawUrl) {
       const r = await fetch(`https://app.rakuten.co.jp/services/api/ShortUrl/Create/20200122?applicationId=${rakutenAppId}&url=${encodeURIComponent(rawUrl)}`);
       if (r.ok) { const s = (await r.json())?.shortUrl; if (s) return s; }
     }
-    const r2 = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(rawUrl)}`);
-    if (r2.ok) { const t = (await r2.text()).trim(); if (t.startsWith('https://')) return t; }
   } catch {}
   return rawUrl;
 }

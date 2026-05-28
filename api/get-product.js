@@ -143,8 +143,6 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
         );
         if (r.ok) { const s = (await r.json())?.shortUrl; if (s) return s; }
       }
-      const r2 = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(rawUrl)}`);
-      if (r2.ok) { const t = (await r2.text()).trim(); if (t.startsWith('https://')) return t; }
     } catch {}
     return rawUrl;
   }
