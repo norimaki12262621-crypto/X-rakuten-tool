@@ -209,6 +209,13 @@
   <div id="claude-review-msg" style="margin-top:8px;font-size:13px;"></div>
 </div>
 
+<div class="sheet-panel">
+  <div class="sheet-panel-title">Threads 1週間分</div>
+  <div class="sheet-panel-hint">監修済みの商品をもとに、商品あり投稿と共感投稿を混ぜた7日分のThreads案を別タブに作ります</div>
+  <button class="btn-main" id="weekly-threads-btn" onclick="generateWeeklyThreads()">Threads案を1週間分作る</button>
+  <div id="weekly-threads-msg" style="margin-top:8px;font-size:13px;"></div>
+</div>
+
 <div id="result">
   <div class="product-info">
     <img id="prod-img" src="" alt="商品画像">
@@ -694,6 +701,32 @@ async function reviewWithClaude() {
   } finally {
     btn.disabled = false;
     btn.textContent = '🤖 Claude監修する';
+  }
+}
+
+async function generateWeeklyThreads() {
+  const btn = document.getElementById('weekly-threads-btn');
+  const msg = document.getElementById('weekly-threads-msg');
+  btn.disabled = true;
+  btn.textContent = '作成中...';
+  msg.innerHTML = '';
+  try {
+    const res = await fetch('/api/claude-review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'weeklyThreads' }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      msg.innerHTML = `<span style="color:#1565c0">OK ${data.message}</span>`;
+    } else {
+      msg.innerHTML = `<span style="color:#b00">NG ${data.error}</span>`;
+    }
+  } catch (e) {
+    msg.innerHTML = `<span style="color:#b00">NG 通信エラー: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Threads案を1週間分作る';
   }
 }
 

@@ -1,6 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { google }  = require('googleapis');
 const { buildStrongXPost } = require('../lib/post-builder');
+const { buildWeeklyThreadsPlan } = require('../lib/threads-weekly-plan');
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 const MAX_BATCH    = 5;
@@ -21,6 +22,9 @@ const C = {
   FINAL:      25,
   THREADS:    28,  // 新列 AC
 };
+
+const WEEKLY_SHEET_NAME = 'Threads週次案';
+const WEEKLY_HEADERS = ['作成日', '予定日', '曜日', '投稿種別', 'テーマ', '商品名', '商品URL', 'Threads本文', '状態'];
 
 async function getSheetsClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -73,6 +77,82 @@ function twitterCount(text) {
   const urls = text.match(/https?:\/\/\S+/g) || [];
   const urlActual = urls.reduce((s, u) => s + [...u].length, 0);
   return [...text].length - urlActual + urls.length * 23;
+}
+
+async function ensureWeeklyThreadsSheet({ sheets, sheetId }) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+  let weekly = meta.data.sheets.find(sheet => sheet.properties.title === WEEKLY_SHEET_NAME);
+  if (!weekly) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetId,
+      resource: {
+        requests: [{ addSheet: { properties: { title: WEEKLY_SHEET_NAME } } }],
+      },
+    });
+    weekly = { properties: { title: WEEKLY_SHEET_NAME } };
+  }
+
+  const header = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: `${WEEKLY_SHEET_NAME}!A1:I1`,
+  });
+  if (header.data.values?.[0]?.[0] !== WEEKLY_HEADERS[0]) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: `${WEEKLY_SHEET_NAME}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [WEEKLY_HEADERS] },
+    });
+  }
+}
+
+async function generateWeeklyThreads({ sheets, sheetId, sheetName }) {
+  await ensureWeeklyThreadsSheet({ sheets, sheetId });
+  const r = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: `${sheetName}!A:AC`,
+  });
+  const rows = r.data.values || [];
+  const products = rows
+    .slice(1)
+    .filter(row => (row[C.STATUS] || '').trim() === '監修済み')
+    .slice(-5)
+    .reverse()
+    .map(row => ({
+      category: row[C.EMOTION_CAT] || '',
+      name: row[C.NAME] || '',
+      price: row[C.PRICE] || '',
+      url: row[C.URL] || '',
+      post: row[C.THREADS] || row[C.FINAL] || row[C.DRAFT] || '',
+    }));
+
+  if (!products.length) {
+    throw new Error('監修済みの商品が見つかりませんでした');
+  }
+
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+  const plan = buildWeeklyThreadsPlan(products);
+  const values = plan.map(item => [
+    now,
+    item.date,
+    item.day,
+    item.type,
+    item.theme,
+    item.productName,
+    item.url,
+    item.text,
+    item.status,
+  ]);
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: sheetId,
+    range: `${WEEKLY_SHEET_NAME}!A:I`,
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    resource: { values },
+  });
+
+  return { count: values.length, sheetName: WEEKLY_SHEET_NAME };
 }
 
 function isWeakXPost(text = '') {
@@ -369,6 +449,17 @@ module.exports = async function handler(req, res) {
 
   try {
     const client = await getSheetsClient();
+    let body = {};
+    try { body = req.body || {}; } catch {}
+    if (body.mode === 'weeklyThreads') {
+      const result = await generateWeeklyThreads(client);
+      return res.status(200).json({
+        success: true,
+        count: result.count,
+        message: `${result.sheetName} に1週間分のThreads案を作成しました`,
+      });
+    }
+
     await ensureThreadsHeader(client);
 
     const r = await client.sheets.spreadsheets.values.get({
