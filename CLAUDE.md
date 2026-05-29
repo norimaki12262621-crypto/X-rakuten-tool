@@ -19,7 +19,7 @@ api/
   get-product.js    ジャンル検索 → Geminiで商品選定・投稿文生成
   get-product-url.js URL解析 → shopCode / itemCode 抽出
   generate-post.js  Geminiで140字投稿文生成
-  shorten-url.js    URL短縮（Rakuten ShortURL → TinyURL fallback）
+  shorten-url.js    URL短縮（Rakuten ShortURL → original fallback）
   get-image.js      商品ページから画像取得
   post-tweet.js     X（Twitter）API投稿
   buffer.js         Buffer API プロキシ（Bufferへのキュー追加）
@@ -31,7 +31,7 @@ api/
 1. 楽天商品URL（item.rakuten.co.jp または a.r10.to）を入力
 2. `/api/get-product-url` でshopCode/itemCode抽出
 3. `/api/rakuten` + `/api/get-image` を並列実行
-4. `/api/shorten-url` でアフィリエイトURLを短縮（a.r10.to or TinyURL）
+4. `/api/shorten-url` でアフィリエイトURLを短縮（a.r10.to or original）
 5. `/api/generate-post` でGeminiが140字以内の投稿文生成
 
 ### ジャンル選択タブ
@@ -80,7 +80,7 @@ api/
 
 ### URL短縮
 - `RAKUTEN_APP_ID` あり → `app.rakuten.co.jp/services/api/ShortUrl` (a.r10.to)
-- なし → `tinyurl.com/api-create.php` にフォールバック
+- なし → 元の楽天アフィリエイトURLを返す（TinyURLは使わない）
 
 ### Vercel ログ確認方法
 ```powershell

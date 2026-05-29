@@ -389,7 +389,8 @@ module.exports = async function handler(req, res) {
       if (status === '投稿文生成済み') {
         targets.push({ rowIndex: i + 1, row });
       }
-      if (isWeakXPost(row[C.FINAL] || row[C.DRAFT] || '')) {
+      const canRepairShortPost = status === '監修済み' || status === '投稿文生成済み';
+      if (canRepairShortPost && isWeakXPost(row[C.FINAL] || row[C.DRAFT] || '')) {
         const alreadyTargeted = targets.some(target => target.rowIndex === i + 1);
         if (!alreadyTargeted) targets.push({ rowIndex: i + 1, row });
       }

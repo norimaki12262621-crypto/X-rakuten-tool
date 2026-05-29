@@ -99,7 +99,7 @@ Vercel の Environment Variables 入力欄では実際の改行（Enterキー）
 | D | 検索ワード | 実際にヒットした楽天検索ワード |
 | E | 商品名 | 楽天商品名（整形済み） |
 | F | 商品価格 | 円（数値） |
-| G | 商品URL | 短縮URL（a.r10.to または tinyurl） |
+| G | 商品URL | 楽天短縮URL（a.r10.to）または楽天アフィリエイトURL |
 | H | 商品画像URL | 楽天商品画像URL |
 | I | JSスコア | JavaScript一次スコア（0-100） |
 | J | X適性スコア | AIバッチスコア（0-100） |

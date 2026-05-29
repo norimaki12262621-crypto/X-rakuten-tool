@@ -1,5 +1,5 @@
 // api/buffer.js  —  Buffer API proxy (avoids browser CORS restriction)
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -46,4 +46,4 @@ export default async function handler(req, res) {
 
   const services = profiles.map((p) => p.formatted_service || p.service).join(", ");
   return res.status(200).json({ success: true, profiles: profiles.length, services });
-}
+};

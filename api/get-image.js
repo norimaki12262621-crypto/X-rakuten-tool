@@ -1,5 +1,3 @@
-export const config = { runtime: 'edge' };
-
 async function followRedirects(startUrl, timeoutMs = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -30,20 +28,16 @@ async function followRedirects(startUrl, timeoutMs = 12000) {
   }
 }
 
-export default async function handler(request) {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Content-Type': 'application/json',
-  };
-  const json = (data, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: corsHeaders });
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Content-Type', 'application/json');
 
-  if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
-  const { searchParams } = new URL(request.url);
-  const url = searchParams.get('url');
-  if (!url) return json({ success: false, error: 'URL required' }, 400);
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ success: false, error: 'URL required' });
 
   try {
     let itemUrl = url;
@@ -85,8 +79,8 @@ export default async function handler(request) {
 
     const imageUrl = meMatch?.[1] || ogMatch?.[1] || '';
 
-    return json({ success: true, imageUrl, finalUrl: itemUrl });
+    return res.status(200).json({ success: true, imageUrl, finalUrl: itemUrl });
   } catch (err) {
-    return json({ success: false, error: err.message }, 500);
+    return res.status(500).json({ success: false, error: err.message });
   }
-}
+};

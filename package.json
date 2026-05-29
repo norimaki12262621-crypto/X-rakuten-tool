@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "node -e \"const {execFileSync}=require('child_process'); const {readdirSync}=require('fs'); for (const dir of ['api','lib']) for (const file of readdirSync(dir).filter(f=>f.endsWith('.js'))) execFileSync(process.execPath, ['--check', `${dir}/${file}`], {stdio:'inherit'});\"",
+    "test": "npm run check"
   },
   "repository": {
     "type": "git",
