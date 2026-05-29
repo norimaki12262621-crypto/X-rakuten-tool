@@ -2,13 +2,12 @@ const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('../lib/_categories');
 const { buildCopyPackage } = require('../lib/copy-engine');
+const { searchRakuten } = require('../lib/rakuten-search');
 
 async function searchWithFallback(searches, maxPrice) {
   for (const keyword of searches) {
     try {
-      const params = new URLSearchParams({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
-      const r = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${params}`);
-      const d = await r.json();
+      const d = await searchRakuten({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
       if (d.Items && d.Items.length > 0) {
         console.log(`[get-product] hit: "${keyword}" (${d.Items.length}件)`);
         return { rawItems: d.Items, usedKeyword: keyword };
@@ -158,9 +157,7 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
         return res.status(404).json({ success: false, error: `「${emotion.label}」で商品が見つかりませんでした（試したワード: ${tried}）` });
       }
     } else {
-      const proxyParams = new URLSearchParams({ keyword: genre, maxPrice, hits: 20, sort: '-reviewCount' });
-      const proxyRes = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${proxyParams}`);
-      const rakutenData = await proxyRes.json();
+      const rakutenData = await searchRakuten({ keyword: genre, maxPrice, hits: 20, sort: '-reviewCount' });
       if (!rakutenData.Items || rakutenData.Items.length === 0) {
         return res.status(404).json({ success: false, error: '商品が見つかりませんでした' });
       }

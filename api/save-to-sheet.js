@@ -1,6 +1,7 @@
 const Groq = require('groq-sdk');
 const { google } = require('googleapis');
 const { EMOTION_SEARCH_MAP, inferMacroCategory, CAT_LABEL } = require('../lib/_categories');
+const { searchRakuten } = require('../lib/rakuten-search');
 
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 
@@ -99,9 +100,7 @@ async function smartScoreBatch(items, groqClient) {
 async function searchWithFallback(searches, maxPrice) {
   for (const keyword of searches) {
     try {
-      const params = new URLSearchParams({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
-      const r = await fetch(`https://rakuten-gift-tool.vercel.app/api/rakuten?${params}`);
-      const d = await r.json();
+      const d = await searchRakuten({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
       if (d.Items?.length > 0) {
         console.log(`[save-to-sheet] hit: "${keyword}" (${d.Items.length}件)`);
         return { rawItems: d.Items, usedKeyword: keyword };
