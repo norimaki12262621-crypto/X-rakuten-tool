@@ -7,7 +7,7 @@ const { searchRakuten } = require('../lib/rakuten-search');
 async function searchWithFallback(searches, maxPrice) {
   const errors = [];
   for (const keyword of searches) {
-    for (const page of [1, 2]) {
+    for (const page of [1]) {
       try {
         const d = await searchRakuten({ keyword, maxPrice, hits: 20, page, sort: '-reviewCount' });
         if (d.Items && d.Items.length > 0) {

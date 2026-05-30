@@ -117,7 +117,7 @@ async function smartScoreBatch(items, groqClient) {
 
 async function searchWithFallback(searches, maxPrice, existing) {
   const searchPlans = [
-    { sort: '-reviewCount', pages: [1, 2, 3] },
+    { sort: '-reviewCount', pages: [1] },
   ];
   const seen = new Set();
   const fresh = [];
