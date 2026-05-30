@@ -4,7 +4,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
 
-  const { keyword, minPrice, maxPrice, sort, hits, itemCode } = req.query;
+  const { keyword, minPrice, maxPrice, sort, hits, page, itemCode } = req.query;
 
   try {
     const data = await searchRakuten({
@@ -13,6 +13,7 @@ module.exports = async function handler(req, res) {
       maxPrice: maxPrice || 999999,
       sort: sort || '-reviewCount',
       hits: hits || 30,
+      page: page || 1,
       itemCode,
     });
     return res.status(200).json(data);

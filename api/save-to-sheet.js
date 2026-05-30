@@ -81,6 +81,24 @@ function jsScore(item) {
   return Math.min(score, 100);
 }
 
+function rawItemToProduct({ Item }) {
+  return {
+    name: dedupeProductName(Item.itemName),
+    catchcopy: dedupeProductName(Item.catchcopy || ''),
+    price: Item.itemPrice,
+    reviewCount: Item.reviewCount || 0,
+    reviewAverage: Item.reviewAverage || 0,
+    shop: Item.shopName || '',
+    url: Item.affiliateUrl || Item.itemUrl,
+    image: Item.mediumImageUrls?.[0]?.imageUrl || '',
+  };
+}
+
+function isExistingProduct(product, existing) {
+  const productKey = normalizeProductKey(product.name);
+  return existing.urls.has(product.url) || existing.names.has(productKey);
+}
+
 async function smartScoreBatch(items, groqClient) {
   const payload = items.map((it, i) => ({ i, n: it.name.slice(0, 40), c: (it.catchcopy || '').slice(0, 30), p: it.price }));
   const prompt = `楽天商品リストをXバズ適性でスコアリング。JSONのみ返せ。
@@ -97,20 +115,61 @@ async function smartScoreBatch(items, groqClient) {
   return JSON.parse(m[0]);
 }
 
-async function searchWithFallback(searches, maxPrice) {
+async function searchWithFallback(searches, maxPrice, existing) {
+  const searchPlans = [
+    { sort: '-reviewCount', pages: [1, 2, 3, 4, 5] },
+    { sort: '-reviewAverage', pages: [1, 2, 3] },
+  ];
+  const seen = new Set();
+  const fresh = [];
+  let foundTotal = 0;
+  let duplicateTotal = 0;
+  let usedKeyword = null;
+  let usedPage = null;
+  let usedSort = null;
+
   for (const keyword of searches) {
-    try {
-      const d = await searchRakuten({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
-      if (d.Items?.length > 0) {
-        console.log(`[save-to-sheet] hit: "${keyword}" (${d.Items.length}件)`);
-        return { rawItems: d.Items, usedKeyword: keyword };
+    for (const { sort, pages } of searchPlans) {
+      for (const page of pages) {
+        try {
+          const d = await searchRakuten({ keyword, maxPrice, hits: 30, page, sort });
+          const rows = d.Items || [];
+          foundTotal += rows.length;
+          if (!rows.length) {
+            console.log(`[save-to-sheet] miss: "${keyword}" page ${page} ${sort}`);
+            continue;
+          }
+
+          for (const raw of rows) {
+            const product = rawItemToProduct(raw);
+            const key = normalizeProductKey(product.name) || product.url;
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+
+            if (existing && isExistingProduct(product, existing)) {
+              duplicateTotal++;
+              continue;
+            }
+
+            if (!usedKeyword) {
+              usedKeyword = keyword;
+              usedPage = page;
+              usedSort = sort;
+            }
+            fresh.push(raw);
+          }
+
+          console.log(`[save-to-sheet] search "${keyword}" page ${page} ${sort}: ${rows.length}件 / fresh ${fresh.length}`);
+          if (fresh.length >= 20) {
+            return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal };
+          }
+        } catch (e) {
+          console.log(`[save-to-sheet] error "${keyword}" page ${page} ${sort}:`, e.message);
+        }
       }
-      console.log(`[save-to-sheet] miss: "${keyword}"`);
-    } catch (e) {
-      console.log(`[save-to-sheet] error "${keyword}":`, e.message);
     }
   }
-  return { rawItems: [], usedKeyword: null };
+  return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal };
 }
 
 async function shortenUrl(rawUrl) {
@@ -138,23 +197,27 @@ module.exports = async function handler(req, res) {
   if (!emotion) return res.status(400).json({ success: false, error: '不正なemotionIdです' });
 
   try {
+    const client = await getSheetsClient();
+    await ensureHeader(client);
+    const existing = await getExistingProducts(client);
+
     // 1. 楽天API検索
-    const { rawItems, usedKeyword } = await searchWithFallback(emotion.searches, maxPrice);
+    const { rawItems, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal } = await searchWithFallback(emotion.searches, maxPrice, existing);
     if (!rawItems.length) {
-      return res.status(404).json({ success: false, error: `「${emotion.label}」で商品が見つかりませんでした` });
+      const message = foundTotal > 0
+        ? `「${emotion.label}」の人気上位はほぼ保存済みです。別のカテゴリか予算で試してください。`
+        : `「${emotion.label}」で商品が見つかりませんでした`;
+      return res.status(404).json({
+        success: false,
+        error: message,
+        foundTotal,
+        duplicateTotal,
+        triedKeywords: emotion.searches,
+      });
     }
 
     // 2. JS一次スコアリング → 上位10件
-    const items = rawItems.slice(0, 20).map(({ Item }) => ({
-      name: dedupeProductName(Item.itemName),
-      catchcopy: dedupeProductName(Item.catchcopy || ''),
-      price: Item.itemPrice,
-      reviewCount: Item.reviewCount || 0,
-      reviewAverage: Item.reviewAverage || 0,
-      shop: Item.shopName || '',
-      url: Item.affiliateUrl || Item.itemUrl,
-      image: Item.mediumImageUrls?.[0]?.imageUrl || '',
-    }));
+    const items = rawItems.map(rawItemToProduct);
     const jsSorted = items.map(it => ({ ...it, _js: jsScore(it) })).sort((a, b) => b._js - a._js);
 
     // 3. AIバッチスコアリング → 並び替え。保存時は重複を避けて5件まで拾う
@@ -180,11 +243,6 @@ module.exports = async function handler(req, res) {
     // 4. URL短縮 (並列)
     const shortUrls = await Promise.all(candidates.map(p => shortenUrl(p.url)));
     candidates = candidates.map((p, i) => ({ ...p, shortUrl: shortUrls[i] }));
-
-    // 5. シート操作
-    const client = await getSheetsClient();
-    await ensureHeader(client);
-    const existing = await getExistingProducts(client);
 
     const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
     let saved = 0, skipped = 0;
@@ -228,10 +286,14 @@ module.exports = async function handler(req, res) {
       saved,
       skipped,
       usedKeyword,
+      usedPage,
+      usedSort,
+      foundTotal,
+      duplicateTotal,
       products: savedProducts,
       message: saved > 0
-        ? `${saved}件を保存しました`
-        : '新規候補が見つかりませんでした。別の感情カテゴリか予算で試してください',
+        ? `${saved}件を保存しました（${usedKeyword} / ${usedPage}ページ目まで拡張）`
+        : '候補は見つかりましたが、すべて保存済みでした。別のカテゴリか予算で試してください',
     });
 
   } catch (err) {
