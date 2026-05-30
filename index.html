@@ -216,6 +216,13 @@
   <div id="weekly-threads-msg" style="margin-top:8px;font-size:13px;"></div>
 </div>
 
+<div class="sheet-panel">
+  <div class="sheet-panel-title">一括生成</div>
+  <div class="sheet-panel-hint">商品ストック、X投稿文、Claude監修、Threads週次案まで順番に作ります</div>
+  <button class="btn-main" id="weekly-all-btn" onclick="generateWeeklyAll()">一括で1週間分を作る</button>
+  <div id="weekly-all-msg" style="margin-top:8px;font-size:13px;"></div>
+</div>
+
 <div id="result">
   <div class="product-info">
     <img id="prod-img" src="" alt="商品画像">
@@ -652,6 +659,17 @@ async function stockToSheet() {
   }
 }
 
+async function callJsonApi(url, body = {}) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || data.message || '処理に失敗しました');
+  return data;
+}
+
 async function generateSheetPosts() {
   const btn = document.getElementById('gen-posts-btn');
   const msg = document.getElementById('gen-posts-msg');
@@ -675,6 +693,43 @@ async function generateSheetPosts() {
   } finally {
     btn.disabled = false;
     btn.textContent = '✍️ 未生成の投稿文を作る';
+  }
+}
+
+async function generateWeeklyAll() {
+  if (currentTab !== 'genre') {
+    document.getElementById('weekly-all-msg').innerHTML = '<span style="color:#b00">先にジャンルを選んでください</span>';
+    return;
+  }
+  const btn = document.getElementById('weekly-all-btn');
+  const msg = document.getElementById('weekly-all-msg');
+  const emotionId = document.getElementById('emotion-id').value;
+  const maxPrice = Number(document.getElementById('max-price').value || 5000);
+  const steps = [
+    ['商品を5件ストック', () => callJsonApi('/api/save-to-sheet', { emotionId, maxPrice })],
+    ['X投稿文を生成', () => callJsonApi('/api/generate-sheet-posts', {})],
+    ['Claude監修', () => callJsonApi('/api/claude-review', {})],
+    ['Threads週次案を作成', () => callJsonApi('/api/claude-review', { mode: 'weeklyThreads' })],
+  ];
+
+  btn.disabled = true;
+  btn.textContent = '一括生成中...';
+  msg.innerHTML = '<span style="color:#555">開始します...</span>';
+  const done = [];
+  try {
+    for (const [label, run] of steps) {
+      msg.innerHTML = `<span style="color:#555">${done.join(' → ')}${done.length ? ' → ' : ''}${label} 中...</span>`;
+      const data = await run();
+      done.push(label);
+      msg.innerHTML = `<span style="color:#1565c0">${done.join(' → ')}</span>`;
+      console.log('[weekly-all]', label, data);
+    }
+    msg.innerHTML = `<span style="color:#1565c0">OK ${done.join(' → ')} 完了</span>`;
+  } catch (e) {
+    msg.innerHTML = `<span style="color:#b00">NG ${done.join(' → ')}${done.length ? ' の後で停止: ' : ''}${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '一括で1週間分を作る';
   }
 }
 
