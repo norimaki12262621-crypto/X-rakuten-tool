@@ -1,7 +1,7 @@
 const Groq = require('groq-sdk');
 const { google } = require('googleapis');
 const { EMOTION_SEARCH_MAP, inferMacroCategory, CAT_LABEL } = require('../lib/_categories');
-const { searchRakuten } = require('../lib/rakuten-search');
+const { searchRakuten, searchRakutenHtmlFallback } = require('../lib/rakuten-search');
 
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 
@@ -117,8 +117,7 @@ async function smartScoreBatch(items, groqClient) {
 
 async function searchWithFallback(searches, maxPrice, existing) {
   const searchPlans = [
-    { sort: '-reviewCount', pages: [1, 2, 3, 4, 5] },
-    { sort: '-reviewAverage', pages: [1, 2, 3] },
+    { sort: '-reviewCount', pages: [1, 2] },
   ];
   const seen = new Set();
   const fresh = [];
@@ -128,12 +127,14 @@ async function searchWithFallback(searches, maxPrice, existing) {
   let usedPage = null;
   let usedSort = null;
   const errors = [];
+  let apiUnavailable = false;
 
   for (const keyword of searches) {
     for (const { sort, pages } of searchPlans) {
       for (const page of pages) {
         try {
-          const d = await searchRakuten({ keyword, maxPrice, hits: 30, page, sort });
+          const search = apiUnavailable ? searchRakutenHtmlFallback : searchRakuten;
+          const d = await search({ keyword, maxPrice, hits: 12, page, sort });
           const rows = d.Items || [];
           foundTotal += rows.length;
           if (!rows.length) {
@@ -161,12 +162,41 @@ async function searchWithFallback(searches, maxPrice, existing) {
           }
 
           console.log(`[save-to-sheet] search "${keyword}" page ${page} ${sort}: ${rows.length}件 / fresh ${fresh.length}`);
-          if (fresh.length >= 20) {
+          if (fresh.length >= 8) {
             return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal };
           }
         } catch (e) {
           console.log(`[save-to-sheet] error "${keyword}" page ${page} ${sort}:`, e.message);
           errors.push(`${keyword}/${page}/${sort}: ${e.message}`);
+          if (/Invalid Access Key|specify valid applicationId|openapi:|legacy:/.test(e.message)) {
+            apiUnavailable = true;
+            try {
+              const d = await searchRakutenHtmlFallback({ keyword, maxPrice, hits: 12, page, sort });
+              const rows = d.Items || [];
+              foundTotal += rows.length;
+              for (const raw of rows) {
+                const product = rawItemToProduct(raw);
+                const key = normalizeProductKey(product.name) || product.url;
+                if (!key || seen.has(key)) continue;
+                seen.add(key);
+                if (existing && isExistingProduct(product, existing)) {
+                  duplicateTotal++;
+                  continue;
+                }
+                if (!usedKeyword) {
+                  usedKeyword = keyword;
+                  usedPage = page;
+                  usedSort = 'web';
+                }
+                fresh.push(raw);
+              }
+              if (fresh.length >= 8) {
+                return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal };
+              }
+            } catch (htmlErr) {
+              errors.push(`${keyword}/${page}/web: ${htmlErr.message}`);
+            }
+          }
         }
       }
     }

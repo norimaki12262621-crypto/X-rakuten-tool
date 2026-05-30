@@ -2,14 +2,16 @@ const FAST_MODEL  = process.env.GROQ_FAST_MODEL  || 'llama-3.1-8b-instant';
 const SMART_MODEL = process.env.GROQ_SMART_MODEL || 'llama-3.3-70b-versatile';
 const { inferMacroCategory, normalizeMacroCategory, buildPost, EMOTION_SEARCH_MAP } = require('../lib/_categories');
 const { buildCopyPackage } = require('../lib/copy-engine');
-const { searchRakuten } = require('../lib/rakuten-search');
+const { searchRakuten, searchRakutenHtmlFallback } = require('../lib/rakuten-search');
 
 async function searchWithFallback(searches, maxPrice) {
   const errors = [];
+  let apiUnavailable = false;
   for (const keyword of searches) {
-    for (const page of [1, 2, 3]) {
+    for (const page of [1]) {
       try {
-        const d = await searchRakuten({ keyword, maxPrice, hits: 20, page, sort: '-reviewCount' });
+        const search = apiUnavailable ? searchRakutenHtmlFallback : searchRakuten;
+        const d = await search({ keyword, maxPrice, hits: 12, page, sort: '-reviewCount' });
         if (d.Items && d.Items.length > 0) {
           console.log(`[get-product] hit: "${keyword}" page ${page} (${d.Items.length}件)`);
           return { rawItems: d.Items, usedKeyword: keyword, usedPage: page };
@@ -18,6 +20,18 @@ async function searchWithFallback(searches, maxPrice) {
       } catch (e) {
         console.log(`[get-product] error "${keyword}" page ${page}:`, e.message);
         errors.push(`${keyword}/${page}: ${e.message}`);
+        if (/Invalid Access Key|specify valid applicationId|openapi:|legacy:/.test(e.message)) {
+          apiUnavailable = true;
+          try {
+            const d = await searchRakutenHtmlFallback({ keyword, maxPrice, hits: 12, page, sort: '-reviewCount' });
+            if (d.Items && d.Items.length > 0) {
+              console.log(`[get-product] web hit: "${keyword}" page ${page} (${d.Items.length}件)`);
+              return { rawItems: d.Items, usedKeyword: keyword, usedPage: page };
+            }
+          } catch (htmlErr) {
+            errors.push(`${keyword}/${page}/web: ${htmlErr.message}`);
+          }
+        }
       }
     }
   }
