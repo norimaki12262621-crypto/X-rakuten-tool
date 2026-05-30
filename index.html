@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -367,7 +367,7 @@ async function loadHookAnalysis(name, price, catchcopy, description, jsScore) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, price, catchcopy: catchcopy || '', description: description || '' }),
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       showAnalysis({ xScore: data.xScore, jsScore: jsScore ?? null, emotion: data.emotion, pain: data.pain, season: data.season, angle: data.angle, hooks: data.hooks });
     }
@@ -378,6 +378,16 @@ async function loadHookAnalysis(name, price, catchcopy, description, jsScore) {
 }
 
 // ─────────────────────────────────────────────────────
+
+async function readJsonResponse(res) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    throw new Error(clean.slice(0, 180) || `サーバーエラー (${res.status})`);
+  }
+}
 
 async function copyPostText() {
   const text = document.getElementById('post-text').value;
@@ -438,7 +448,7 @@ async function addToBuffer() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, access_token: token }),
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       msg.innerHTML = `<span style="color:#168BBF">✅ Bufferに追加しました（${data.services || data.profiles + '件'}）</span>`;
     } else {
@@ -497,7 +507,7 @@ async function fetchProduct() {
 
       // Step1: URL解析 → shopCode + itemCode
       const codeRes = await fetch(`/api/get-product-url?url=${encodeURIComponent(url)}`);
-      const codeData = await codeRes.json();
+      const codeData = await readJsonResponse(codeRes);
       if (!codeData.success) throw new Error(codeData.error || '取得に失敗しました');
       const { shopCode, itemCode } = codeData;
 
@@ -512,7 +522,7 @@ async function fetchProduct() {
         fetch(`/api/get-image?url=${encodeURIComponent(url)}`),
       ]);
       if (!rakutenRes.ok) throw new Error(`サーバーエラー (${rakutenRes.status})`);
-      const rakutenData = await rakutenRes.json();
+      const rakutenData = await readJsonResponse(rakutenRes);
       console.log('[rakuten] status:', rakutenRes.status);
       console.log('[rakuten] response:', JSON.stringify(rakutenData));
       const pageImageUrl = await imgRes.json().then(d => d.imageUrl || '').catch(() => '');
@@ -541,7 +551,7 @@ async function fetchProduct() {
       let affUrl = rawAffUrl;
       try {
         const shrRes = await fetch(`/api/shorten-url?url=${encodeURIComponent(rawAffUrl)}`);
-        const shrData = await shrRes.json();
+        const shrData = await readJsonResponse(shrRes);
         if (shrData.shortUrl) affUrl = shrData.shortUrl;
       } catch {}
 
@@ -563,7 +573,7 @@ async function fetchProduct() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(postBody),
         });
-        const postData = await postRes.json();
+        const postData = await readJsonResponse(postRes);
         document.getElementById('post-text').value = postData.postText ||
           `${matched.itemName.slice(0, 40)}\n¥${Number(matched.itemPrice).toLocaleString()}\n${affUrl}`;
         if (postData.success) {
@@ -581,7 +591,7 @@ async function fetchProduct() {
       const emotionId = document.getElementById('emotion-id').value;
       const maxPrice = document.getElementById('max-price').value;
       const res = await fetch(`/api/get-product?emotionId=${encodeURIComponent(emotionId)}&maxPrice=${maxPrice}`);
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (!data.success) throw new Error(data.error || '取得に失敗しました');
       const p = data.product;
       const imgSrc = p.image || '';
@@ -694,7 +704,7 @@ async function generateSheetPosts() {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       msg.innerHTML = `<span style="color:#1565c0">✅ ${data.message}</span>`;
     } else {
@@ -757,7 +767,7 @@ async function reviewWithClaude() {
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       msg.innerHTML = `<span style="color:#1565c0">✅ ${data.message}</span>`;
     } else {
@@ -783,7 +793,7 @@ async function generateWeeklyThreads() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mode: 'weeklyThreads' }),
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       msg.innerHTML = `<span style="color:#1565c0">OK ${data.message}</span>`;
     } else {
@@ -817,7 +827,7 @@ async function postToX() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (data.success) {
       msg.innerHTML = `<span style="color:green">✅ 投稿成功！ <a href="https://x.com/i/web/status/${data.tweet_id}" target="_blank">ツイートを見る</a></span>`;
     } else {
@@ -833,3 +843,4 @@ async function postToX() {
 </script>
 </body>
 </html>
+
