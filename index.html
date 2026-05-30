@@ -641,7 +641,13 @@ async function stockToSheet() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ emotionId, maxPrice: Number(maxPrice) }),
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(text.slice(0, 180) || `サーバーエラー (${res.status})`);
+    }
     if (data.success) {
       const skip = data.skipped > 0 ? `（${data.skipped}件重複スキップ）` : '';
       const color = data.saved > 0 ? '#1565c0' : '#b26a00';
@@ -665,7 +671,13 @@ async function callJsonApi(url, body = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text.slice(0, 180) || `サーバーエラー (${res.status})`);
+  }
   if (!data.success) throw new Error(data.error || data.message || '処理に失敗しました');
   return data;
 }
