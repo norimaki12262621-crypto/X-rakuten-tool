@@ -5,19 +5,23 @@ const { buildCopyPackage } = require('../lib/copy-engine');
 const { searchRakuten } = require('../lib/rakuten-search');
 
 async function searchWithFallback(searches, maxPrice) {
+  const errors = [];
   for (const keyword of searches) {
-    try {
-      const d = await searchRakuten({ keyword, maxPrice, hits: 20, sort: '-reviewCount' });
-      if (d.Items && d.Items.length > 0) {
-        console.log(`[get-product] hit: "${keyword}" (${d.Items.length}件)`);
-        return { rawItems: d.Items, usedKeyword: keyword };
+    for (const page of [1, 2, 3]) {
+      try {
+        const d = await searchRakuten({ keyword, maxPrice, hits: 20, page, sort: '-reviewCount' });
+        if (d.Items && d.Items.length > 0) {
+          console.log(`[get-product] hit: "${keyword}" page ${page} (${d.Items.length}件)`);
+          return { rawItems: d.Items, usedKeyword: keyword, usedPage: page };
+        }
+        console.log(`[get-product] miss: "${keyword}" page ${page}`);
+      } catch (e) {
+        console.log(`[get-product] error "${keyword}" page ${page}:`, e.message);
+        errors.push(`${keyword}/${page}: ${e.message}`);
       }
-      console.log(`[get-product] miss: "${keyword}"`);
-    } catch (e) {
-      console.log(`[get-product] error "${keyword}":`, e.message);
     }
   }
-  return { rawItems: [], usedKeyword: null };
+  return { rawItems: [], usedKeyword: null, errors };
 }
 
 module.exports = async function handler(req, res) {
@@ -150,11 +154,16 @@ pet=ペット / food=食品グルメ / kids=子どもベビー / fashion=服バ�
     let rawItems, usedKeyword;
     if (emotionId && EMOTION_SEARCH_MAP[emotionId]) {
       const emotion = EMOTION_SEARCH_MAP[emotionId];
-      ({ rawItems, usedKeyword } = await searchWithFallback(emotion.searches, maxPrice));
+      const searchResult = await searchWithFallback(emotion.searches, maxPrice);
+      ({ rawItems, usedKeyword } = searchResult);
       if (!usedKeyword) {
         const tried = emotion.searches.join(' / ');
         console.log(`[get-product] all miss for "${emotion.label}": ${tried}`);
-        return res.status(404).json({ success: false, error: `「${emotion.label}」で商品が見つかりませんでした（試したワード: ${tried}）` });
+        const firstError = searchResult.errors?.[0];
+        const error = firstError
+          ? `楽天APIの検索でエラーが出ています: ${firstError}`
+          : `「${emotion.label}」で商品が見つかりませんでした（試したワード: ${tried}）`;
+        return res.status(404).json({ success: false, error, errors: searchResult.errors?.slice(0, 5) || [] });
       }
     } else {
       const rakutenData = await searchRakuten({ keyword: genre, maxPrice, hits: 20, sort: '-reviewCount' });

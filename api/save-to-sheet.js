@@ -127,6 +127,7 @@ async function searchWithFallback(searches, maxPrice, existing) {
   let usedKeyword = null;
   let usedPage = null;
   let usedSort = null;
+  const errors = [];
 
   for (const keyword of searches) {
     for (const { sort, pages } of searchPlans) {
@@ -165,11 +166,12 @@ async function searchWithFallback(searches, maxPrice, existing) {
           }
         } catch (e) {
           console.log(`[save-to-sheet] error "${keyword}" page ${page} ${sort}:`, e.message);
+          errors.push(`${keyword}/${page}/${sort}: ${e.message}`);
         }
       }
     }
   }
-  return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal };
+  return { rawItems: fresh, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal, errors };
 }
 
 async function shortenUrl(rawUrl) {
@@ -202,9 +204,11 @@ module.exports = async function handler(req, res) {
     const existing = await getExistingProducts(client);
 
     // 1. 楽天API検索
-    const { rawItems, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal } = await searchWithFallback(emotion.searches, maxPrice, existing);
+    const { rawItems, usedKeyword, usedPage, usedSort, foundTotal, duplicateTotal, errors = [] } = await searchWithFallback(emotion.searches, maxPrice, existing);
     if (!rawItems.length) {
-      const message = foundTotal > 0
+      const message = foundTotal === 0 && errors.length > 0
+        ? `楽天APIの検索でエラーが出ています: ${errors[0]}`
+        : foundTotal > 0
         ? `「${emotion.label}」の人気上位はほぼ保存済みです。別のカテゴリか予算で試してください。`
         : `「${emotion.label}」で商品が見つかりませんでした`;
       return res.status(404).json({
@@ -212,6 +216,7 @@ module.exports = async function handler(req, res) {
         error: message,
         foundTotal,
         duplicateTotal,
+        errors: errors.slice(0, 5),
         triedKeywords: emotion.searches,
       });
     }
